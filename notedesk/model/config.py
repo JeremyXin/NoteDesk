@@ -13,6 +13,7 @@ class NamedModelConfig(BaseModel):
     provider: Provider
     model: str
     api_key_env: str
+    base_url: str | None = None
     temperature: float = 0.0
     max_tokens: int | None = None
     retry: int = 0
