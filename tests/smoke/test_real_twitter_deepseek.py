@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import asyncio
+import shlex
 import shutil
 
 import pytest
@@ -35,7 +36,9 @@ def test_live_smoke_requires_explicit_env() -> None:
             settings=settings,
             artifact_path=artifact_path,
             ui_queue=asyncio.Queue(),
-            twitter_command=os.getenv("NOTEDESK_SMOKE_TWITTER_CMD", "twitter timeline --limit 3").split(),
+            twitter_command=shlex.split(
+                os.getenv("NOTEDESK_SMOKE_TWITTER_CMD", "twitter timeline --limit 3")
+            ),
             summary_prompt=os.getenv(
                 "NOTEDESK_SMOKE_PROMPT",
                 "Produce a markdown brief with a title and bullet insights.",
