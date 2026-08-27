@@ -1,17 +1,66 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 from pathlib import Path
 from typing import Callable
 
+from agentscope.agent import Agent
+from agentscope.message import Msg, TextBlock, UserMsg
 from agentscope.state import AgentState, Task
 
+from notedesk.agent.events import map_agent_event
+from notedesk.agent.factory import build_agent_session
 from notedesk.agent.middleware import publish_task_snapshot
 from notedesk.artifacts.markdown import ArtifactValidationError, save_markdown_artifact
+from notedesk.config.models import AppSettings
+from notedesk.model.config import ModelRoleMap, NamedModelConfig, Provider
 
 
 class RuntimeFailure(RuntimeError):
     pass
+
+
+class AgentSessionRuntime:
+    def __init__(
+        self,
+        agent: Agent,
+        ui_queue: asyncio.Queue,
+        artifact_path: Path | None = None,
+    ) -> None:
+        self.agent = agent
+        self.ui_queue = ui_queue
+        self.artifact_path = artifact_path
+
+    async def run_once(self, prompt: str):
+        final_msg: Msg | None = None
+
+        async for chunk in self.agent.reply_stream(
+            UserMsg(name="user", content=prompt),
+            yield_final_msg=True,
+        ):
+            mapped = map_agent_event(chunk)
+            if mapped is not None:
+                await self.ui_queue.put(mapped)
+            await publish_task_snapshot(self.ui_queue, self.agent.state)
+            if isinstance(chunk, Msg):
+                final_msg = chunk
+
+        if self.artifact_path is None or final_msg is None:
+            return None
+
+        markdown = _extract_text(final_msg).strip()
+        if not markdown:
+            return None
+
+        try:
+            return save_markdown_artifact(
+                output_path=self.artifact_path,
+                markdown=markdown,
+                sources=["agentscope:reply_stream"],
+            )
+        except ArtifactValidationError:
+            return None
 
 
 class CoreMVPRuntime:
@@ -60,3 +109,65 @@ class CoreMVPRuntime:
             return receipt
         except (ArtifactValidationError, Exception) as exc:
             raise RuntimeFailure(str(exc)) from exc
+
+
+def _extract_text(message: Msg) -> str:
+    if isinstance(message.content, str):
+        return message.content
+    return "".join(
+        block.text for block in message.content if isinstance(block, TextBlock)
+    )
+
+
+async def run_live_smoke(
+    settings: AppSettings,
+    artifact_path: Path,
+    ui_queue: asyncio.Queue,
+    twitter_command: list[str],
+    summary_prompt: str,
+):
+    tweets = _run_twitter_command(twitter_command)
+    role_map = ModelRoleMap(
+        models={
+            "default": NamedModelConfig(
+                provider=Provider.DEEPSEEK,
+                model=settings.deepseek.model,
+                api_key_env=settings.deepseek.api_key_env,
+                base_url=settings.deepseek.base_url,
+                temperature=0.2,
+                max_tokens=1200,
+                retry=1,
+                context_size=32768,
+            )
+        },
+        roles={"agent": "default", "generator": "default"},
+    )
+    agent = build_agent_session(settings=settings, role_map=role_map)
+    runtime = AgentSessionRuntime(
+        agent=agent,
+        ui_queue=ui_queue,
+        artifact_path=artifact_path,
+    )
+    prompt = (
+        f"{summary_prompt}\n\n"
+        "Summarize the following Twitter timeline into concise markdown.\n\n"
+        f"```text\n{tweets}\n```"
+    )
+    receipt = await runtime.run_once(prompt)
+    if receipt is None:
+        raise RuntimeFailure("Live smoke did not produce a markdown artifact")
+    return receipt
+
+
+def _run_twitter_command(command: list[str]) -> str:
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeFailure(
+            f"Twitter CLI failed with code {result.returncode}: {result.stderr.strip()}"
+        )
+    return result.stdout.strip()
