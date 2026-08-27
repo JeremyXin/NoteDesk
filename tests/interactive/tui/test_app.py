@@ -1,7 +1,11 @@
 from pathlib import Path
 
 from prompt_toolkit.application import Application
+from prompt_toolkit.input.defaults import create_pipe_input
+from prompt_toolkit.output import DummyOutput
 
+from notedesk.agent.events import PermissionRequestEvent
+from notedesk.artifacts.models import ArtifactReceipt
 from notedesk.agent.middleware import TaskSnapshot, TaskSnapshotItem
 from notedesk.interactive.tui.app import NoteDeskTUI
 
@@ -67,3 +71,96 @@ def test_tui_appends_transcript_and_updates_status(tmp_path: Path) -> None:
 
     assert "Assistant: hello" in app.transcript_field.text
     assert "Running" in app.render_status_bar()
+
+
+def test_tui_can_submit_and_clear_input(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    submitted: list[str] = []
+    app.on_submit = submitted.append
+    app.input_field.text = "Summarize this"
+
+    app.handle_submit()
+
+    assert submitted == ["Summarize this"]
+    assert app.input_field.text == ""
+
+
+def test_tui_cancel_path_updates_status(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    cancelled: list[bool] = []
+    app.on_cancel = lambda: cancelled.append(True)
+
+    app.handle_cancel()
+
+    assert cancelled == [True]
+    assert "Cancelling" in app.render_status_bar()
+
+
+def test_tui_key_binding_ctrl_t_toggles_drawer(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    bindings = app._build_key_bindings().bindings
+
+    assert any(str(binding.keys[0]) == "Keys.ControlT" for binding in bindings)
+
+    app.toggle_task_drawer()
+
+    assert app.task_drawer_open is True
+
+
+def test_tui_can_insert_multiline_input(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    app.input_field.text = "line1"
+
+    app.handle_insert_newline()
+
+    assert app.input_field.text == "line1\n"
+
+
+def test_tui_ctrl_c_clears_input_then_sets_exit_status(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    app.input_field.text = "pending"
+
+    first = app.handle_ctrl_c()
+    second = app.handle_ctrl_c()
+
+    assert first == "cleared_input"
+    assert second == "request_exit"
+
+
+def test_tui_renders_permission_and_artifact_messages(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+
+    app.show_permission_request(
+        PermissionRequestEvent(
+            tool_name="Bash",
+            summary="Permission required for tool action",
+        )
+    )
+    app.show_artifact_receipt(
+        ArtifactReceipt(
+            path=tmp_path / "summary.md",
+            bytes_written=42,
+            sources=["twitter:timeline"],
+        )
+    )
+
+    assert "Permission required for tool action" in app.transcript_field.text
+    assert "summary.md" in app.transcript_field.text

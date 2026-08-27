@@ -64,6 +64,48 @@ path = "{root_b.name}"
     assert "twitter-cli" in result.stdout
 
 
+def test_skills_reload_command_uses_same_diagnostics_surface(tmp_path) -> None:
+    runner = CliRunner()
+    skills = tmp_path / "skills"
+    artifacts = tmp_path / "artifacts"
+    skills.mkdir()
+    artifacts.mkdir()
+    skill_dir = skills / "twitter-cli"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: twitter-cli\ndescription: Twitter read\n---\nUse twitter\n"
+    )
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+workspace = "."
+
+[deepseek]
+model = "deepseek-chat"
+api_key_env = "DEEPSEEK_API_KEY"
+
+[artifacts]
+root = "artifacts"
+
+[permissions]
+mode = "accept_edits"
+
+[[skill_roots]]
+path = "skills"
+""".strip()
+    )
+
+    result = runner.invoke(
+        app,
+        ["skills", "reload", "--config-path", str(config_path)],
+        env={"DEEPSEEK_API_KEY": "secret"},
+    )
+
+    assert result.exit_code == 0
+    assert "reloaded" in result.stdout.lower()
+    assert "twitter-cli" in result.stdout
+
+
 def test_default_invocation_launches_tui_summary(tmp_path) -> None:
     runner = CliRunner()
     skills = tmp_path / "skills"

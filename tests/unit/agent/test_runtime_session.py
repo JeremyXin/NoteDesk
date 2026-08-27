@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from agentscope.agent import Agent
 from agentscope.credential import DeepSeekCredential
 from agentscope.formatter import FormatterBase
-from agentscope.message import TextBlock, UserMsg
+from agentscope.message import TextBlock, ToolCallBlock, UserMsg
 from agentscope.model import ChatModelBase, ChatResponse
 
 from notedesk.agent.factory import build_session_toolkit
@@ -30,8 +30,10 @@ class FakeStreamingModel(ChatModelBase):
             context_size=4096,
         )
         self.formatter = DummyFormatter()
+        self.calls = 0
 
     async def _call_api(self, model_name, messages, tools=None, tool_choice=None, **kwargs):
+        self.calls += 1
         async def _stream():
             yield ChatResponse(content=[TextBlock(text="# Summary")], is_last=False)
             yield ChatResponse(content=[TextBlock(text="\n\n- Hello world")], is_last=False)
@@ -93,3 +95,61 @@ def test_agent_session_runtime_skips_artifact_when_no_text_output(tmp_path) -> N
 
     assert receipt is None
     assert not (tmp_path / "reply.md").exists()
+
+
+def test_agent_session_runtime_can_drive_native_task_tools(tmp_path) -> None:
+    queue: asyncio.Queue = asyncio.Queue()
+
+    class TaskPlanningModel(FakeStreamingModel):
+        async def _call_api(self, model_name, messages, tools=None, tool_choice=None, **kwargs):
+            self.calls += 1
+
+            async def _stream():
+                if self.calls == 1:
+                    yield ChatResponse(
+                        content=[
+                            ToolCallBlock(
+                                id="tool-1",
+                                name="TaskCreate",
+                                input='{"subject":"Collect tweets","description":"Fetch timeline"}',
+                            )
+                        ],
+                        is_last=True,
+                    )
+                elif self.calls == 2:
+                    yield ChatResponse(
+                        content=[
+                            ToolCallBlock(
+                                id="tool-2",
+                                name="TaskUpdate",
+                                input='{"task_id":"1","status":"completed"}',
+                            )
+                        ],
+                        is_last=True,
+                    )
+                else:
+                    yield ChatResponse(
+                        content=[TextBlock(text="# Summary\n\n- Done")],
+                        is_last=True,
+                    )
+
+            return _stream()
+
+    agent = Agent(
+        name="notedesk",
+        system_prompt="You are NoteDesk.",
+        model=TaskPlanningModel(),
+        toolkit=build_session_toolkit(tmp_path, []),
+    )
+    runtime = AgentSessionRuntime(
+        agent=agent,
+        ui_queue=queue,
+        artifact_path=tmp_path / "reply.md",
+    )
+
+    receipt = asyncio.run(runtime.run_once("Summarize this"))
+
+    assert receipt is not None
+    assert len(agent.state.tasks_context.tasks) == 1
+    assert agent.state.tasks_context.tasks[0].subject == "Collect tweets"
+    assert agent.state.tasks_context.tasks[0].state == "completed"

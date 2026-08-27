@@ -7,6 +7,7 @@ from agentscope.state import AgentState
 from agentscope.tool import Bash, LocalBackend, TaskCreate, TaskGet, TaskList, TaskUpdate, Toolkit
 
 from notedesk.agent.permissions import build_permission_engine
+from notedesk.agent.prompts import default_system_prompt
 from notedesk.config.models import AppSettings
 from notedesk.model.config import ModelRoleMap
 from notedesk.model.factory import ModelFactory
@@ -41,18 +42,10 @@ def build_agent_session(settings: AppSettings, role_map: ModelRoleMap) -> Agent:
     ).context
     return Agent(
         name="notedesk",
-        system_prompt=_default_system_prompt(),
+        system_prompt=default_system_prompt(),
         model=model_factory.resolve("agent"),
         toolkit=toolkit,
         state=state,
         react_config=ReActConfig(max_iters=8),
         injection_config=InjectionConfig(timezone="Asia/Shanghai"),
-    )
-
-
-def _default_system_prompt() -> str:
-    return (
-        "You are NoteDesk, a local-first knowledge-work agent. "
-        "Use available tasks and tools to gather information, synthesize it, "
-        "and produce concise markdown artifacts."
     )

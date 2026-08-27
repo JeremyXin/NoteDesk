@@ -168,6 +168,21 @@ def _run_twitter_command(command: list[str]) -> str:
     )
     if result.returncode != 0:
         raise RuntimeFailure(
-            f"Twitter CLI failed with code {result.returncode}: {result.stderr.strip()}"
+            f"Twitter CLI failed with code {result.returncode}: "
+            f"{_sanitize_diagnostic(result.stderr.strip())}"
         )
     return result.stdout.strip()
+
+
+def _sanitize_diagnostic(text: str) -> str:
+    sanitized = text
+    patterns = [
+        (r"token=[^\s]+", "token=[redacted]"),
+        (r"cookie=[^\s]+", "cookie=[redacted]"),
+        (r"authorization:\s*bearer\s+[^\s]+", "authorization: bearer [redacted]"),
+    ]
+    import re
+
+    for pattern, replacement in patterns:
+        sanitized = re.sub(pattern, replacement, sanitized, flags=re.IGNORECASE)
+    return sanitized
