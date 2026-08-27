@@ -163,4 +163,20 @@ def test_tui_renders_permission_and_artifact_messages(tmp_path: Path) -> None:
     )
 
     assert "Permission required for tool action" in app.transcript_field.text
+    assert "Ctrl-Y approve / Ctrl-N deny" in app.transcript_field.text
     assert "summary.md" in app.transcript_field.text
+
+
+def test_tui_ctrl_c_requests_exit_when_input_is_empty(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    with create_pipe_input() as pipe_input:
+        application = app.build_application(input=pipe_input, output=DummyOutput())
+        app.input_field.text = ""
+
+        outcome = app.handle_ctrl_c()
+
+        assert outcome == "request_exit"
+        assert application is not None

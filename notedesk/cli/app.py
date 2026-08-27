@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import platform
 import shutil
 from importlib.metadata import version
@@ -8,8 +9,12 @@ import sys
 
 import typer
 
+from notedesk.agent.runtime import AgentSessionRuntime, build_default_role_map
+from notedesk.agent.factory import build_agent_session
 from notedesk.config.loader import load_settings
+from notedesk.config.models import AppSettings
 from notedesk.interactive.tui.app import NoteDeskTUI
+from notedesk.interactive.tui.runner import TUISessionController
 from notedesk.skills.discovery import discover_skill_catalog
 
 
@@ -67,7 +72,7 @@ def main_callback(
         artifact_root=settings.artifacts.root,
     )
     if sys.stdin.isatty() and sys.stdout.isatty():
-        tui.build_application().run()
+        launch_tui(settings, tui)
     else:
         typer.echo(tui.render_launch_summary())
 
@@ -110,3 +115,32 @@ def skills_reload(config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, exists=F
 
 def main() -> None:
     app()
+
+
+def launch_tui(settings: AppSettings, tui: NoteDeskTUI | None = None) -> None:
+    ui_queue: asyncio.Queue = asyncio.Queue()
+    artifact_root = settings.artifacts.root
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_root / "latest.md"
+    runtime = AgentSessionRuntime(
+        agent=build_agent_session(settings, build_default_role_map(settings)),
+        ui_queue=ui_queue,
+        artifact_path=artifact_path,
+    )
+    tui = tui or NoteDeskTUI(
+        workspace=settings.workspace,
+        artifact_root=artifact_root,
+    )
+    controller = TUISessionController(tui=tui, runtime=runtime)
+    application = tui.build_application()
+    tui.on_submit = lambda text: application.create_background_task(
+        controller.submit_prompt(text)
+    )
+    tui.on_cancel = lambda: application.create_background_task(controller.cancel())
+    tui.on_approve_permission = lambda: application.create_background_task(
+        controller.approve_permission()
+    )
+    tui.on_deny_permission = lambda: application.create_background_task(
+        controller.deny_permission()
+    )
+    application.run()

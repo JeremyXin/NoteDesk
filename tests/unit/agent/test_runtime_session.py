@@ -2,6 +2,7 @@ import asyncio
 from dataclasses import dataclass
 
 from agentscope.agent import Agent
+from agentscope.event import RequireUserConfirmEvent
 from agentscope.credential import DeepSeekCredential
 from agentscope.formatter import FormatterBase
 from agentscope.message import TextBlock, ToolCallBlock, UserMsg
@@ -153,3 +154,40 @@ def test_agent_session_runtime_can_drive_native_task_tools(tmp_path) -> None:
     assert len(agent.state.tasks_context.tasks) == 1
     assert agent.state.tasks_context.tasks[0].subject == "Collect tweets"
     assert agent.state.tasks_context.tasks[0].state == "completed"
+
+
+def test_agent_session_runtime_tracks_pending_permission_event(tmp_path) -> None:
+    queue: asyncio.Queue = asyncio.Queue()
+
+    class PermissionModel(FakeStreamingModel):
+        async def _call_api(self, model_name, messages, tools=None, tool_choice=None, **kwargs):
+            async def _stream():
+                yield ChatResponse(
+                    content=[
+                        ToolCallBlock(
+                            id="tool-1",
+                            name="Bash",
+                            input='{"command":"twitter post \\"hello\\""}',
+                        )
+                    ],
+                    is_last=True,
+                )
+
+            return _stream()
+
+    agent = Agent(
+        name="notedesk",
+        system_prompt="You are NoteDesk.",
+        model=PermissionModel(),
+        toolkit=build_session_toolkit(tmp_path, []),
+    )
+    runtime = AgentSessionRuntime(
+        agent=agent,
+        ui_queue=queue,
+        artifact_path=tmp_path / "reply.md",
+    )
+
+    receipt = asyncio.run(runtime.run_once("Summarize this"))
+
+    assert receipt is None
+    assert isinstance(runtime.pending_permission_event, RequireUserConfirmEvent)

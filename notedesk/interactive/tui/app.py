@@ -26,6 +26,9 @@ class NoteDeskTUI:
         self.status_text = "Idle"
         self.on_submit: Callable[[str], None] = lambda text: None
         self.on_cancel: Callable[[], None] = lambda: None
+        self.on_approve_permission: Callable[[], None] = lambda: None
+        self.on_deny_permission: Callable[[], None] = lambda: None
+        self.pending_permission: PermissionRequestEvent | None = None
 
         self.transcript_field = TextArea(
             text="",
@@ -123,7 +126,10 @@ class NoteDeskTUI:
         return "request_exit"
 
     def show_permission_request(self, event: PermissionRequestEvent) -> None:
-        self.append_transcript(f"Permission: {event.summary}")
+        self.pending_permission = event
+        self.append_transcript(
+            f"Permission: {event.summary} [Ctrl-Y approve / Ctrl-N deny]"
+        )
         self.set_status("Waiting for permission")
 
     def show_artifact_receipt(self, receipt: ArtifactReceipt) -> None:
@@ -131,6 +137,20 @@ class NoteDeskTUI:
             f"Artifact saved: {receipt.path.name} ({receipt.bytes_written} bytes)"
         )
         self.set_status("Artifact saved")
+
+    def handle_approve_permission(self) -> None:
+        if self.pending_permission is None:
+            return
+        self.on_approve_permission()
+        self.pending_permission = None
+        self.set_status("Permission approved")
+
+    def handle_deny_permission(self) -> None:
+        if self.pending_permission is None:
+            return
+        self.on_deny_permission()
+        self.pending_permission = None
+        self.set_status("Permission denied")
 
     def _build_key_bindings(self) -> KeyBindings:
         kb = KeyBindings()
@@ -152,7 +172,19 @@ class NoteDeskTUI:
 
         @kb.add("c-c")
         def _ctrl_c(event) -> None:
-            self.handle_ctrl_c()
+            outcome = self.handle_ctrl_c()
+            if outcome == "request_exit":
+                event.app.exit()
+            event.app.invalidate()
+
+        @kb.add("c-y")
+        def _approve(event) -> None:
+            self.handle_approve_permission()
+            event.app.invalidate()
+
+        @kb.add("c-n")
+        def _deny(event) -> None:
+            self.handle_deny_permission()
             event.app.invalidate()
 
         @kb.add("c-t")
