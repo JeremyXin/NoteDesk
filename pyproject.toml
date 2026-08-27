@@ -25,3 +25,6 @@ notedesk = "notedesk.cli.app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "live_smoke: explicit opt-in smoke tests that touch real external dependencies",
+]
