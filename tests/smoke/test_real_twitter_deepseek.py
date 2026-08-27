@@ -24,7 +24,7 @@ def test_live_smoke_requires_explicit_env() -> None:
     if shutil.which("twitter") is None:
         pytest.skip("Twitter CLI not found in PATH.")
 
-    config_path = Path(os.getenv("NOTEDESK_SMOKE_CONFIG", ".notedesk/config.toml"))
+    config_path = Path(os.getenv("NOTEDESK_SMOKE_CONFIG", "config.toml"))
     if not config_path.exists():
         pytest.skip(f"Config not found: {config_path}")
 

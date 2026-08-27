@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from notedesk.config.loader import load_settings
+from notedesk.config.loader import load_settings, resolve_config_path
 from notedesk.config.models import PermissionMode
 
 
@@ -161,3 +161,34 @@ mode = "accept_edits"
     with pytest.raises(FileNotFoundError):
         load_settings(config_path)
 
+
+def test_resolve_config_path_prefers_root_config(tmp_path: Path) -> None:
+    root_config = tmp_path / "config.toml"
+    legacy_dir = tmp_path / ".notedesk"
+    legacy_dir.mkdir()
+    legacy_config = legacy_dir / "config.toml"
+    root_config.write_text("workspace = \".\"\n")
+    legacy_config.write_text("workspace = \".\"\n")
+
+    resolved = resolve_config_path(None, cwd=tmp_path)
+
+    assert resolved == root_config
+
+
+def test_resolve_config_path_falls_back_to_legacy_config(tmp_path: Path) -> None:
+    legacy_dir = tmp_path / ".notedesk"
+    legacy_dir.mkdir()
+    legacy_config = legacy_dir / "config.toml"
+    legacy_config.write_text("workspace = \".\"\n")
+
+    resolved = resolve_config_path(None, cwd=tmp_path)
+
+    assert resolved == legacy_config
+
+
+def test_resolve_config_path_uses_explicit_path_when_provided(tmp_path: Path) -> None:
+    explicit = tmp_path / "custom.toml"
+
+    resolved = resolve_config_path(explicit, cwd=tmp_path)
+
+    assert resolved == explicit

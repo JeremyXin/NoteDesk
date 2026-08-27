@@ -12,6 +12,9 @@ from notedesk.config.models import (
     SkillRootSettings,
 )
 
+ROOT_CONFIG_PATH = Path("config.toml")
+LEGACY_CONFIG_PATH = Path(".notedesk/config.toml")
+
 
 def _resolve_workspace(config_path: Path, workspace_value: str | None) -> Path:
     workspace_hint = Path(workspace_value or ".")
@@ -25,6 +28,20 @@ def _resolve_workspace(config_path: Path, workspace_value: str | None) -> Path:
 def _resolve_path(workspace: Path, value: str) -> Path:
     path = Path(value)
     return path if path.is_absolute() else (workspace / path).resolve()
+
+
+def resolve_config_path(config_path: Path | None, cwd: Path | None = None) -> Path:
+    if config_path is not None:
+        return config_path
+
+    base = cwd or Path.cwd()
+    root_config = base / ROOT_CONFIG_PATH
+    legacy_config = base / LEGACY_CONFIG_PATH
+    if root_config.exists():
+        return root_config
+    if legacy_config.exists():
+        return legacy_config
+    return root_config
 
 
 def load_settings(config_path: Path) -> AppSettings:
