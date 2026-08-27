@@ -13,5 +13,8 @@ def test_config_init_writes_default_config_file(tmp_path) -> None:
 
     assert result.exit_code == 0
     assert config_path.exists()
-    assert "db_path" in config_path.read_text()
+    text = config_path.read_text()
+    assert "[deepseek]" in text
+    assert "[permissions]" in text
+    assert "[[skill_roots]]" in text
     assert str(config_path) in result.stdout
