@@ -79,3 +79,24 @@ def test_model_factory_requires_declared_api_key_env(
 
     with pytest.raises(EnvironmentError):
         factory.resolve("agent")
+
+
+def test_model_factory_prefers_inline_api_key_over_env(
+    monkeypatch: pytest.MonkeyPatch, role_map: ModelRoleMap
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "env-secret")
+    inline_role_map = role_map.model_copy(
+        update={
+            "models": {
+                "default": role_map.models["default"].model_copy(
+                    update={"api_key": "inline-secret"}
+                )
+            }
+        }
+    )
+
+    factory = ModelFactory(inline_role_map)
+    model = factory.resolve("agent")
+
+    assert isinstance(model.credential, DeepSeekCredential)
+    assert model.credential.api_key.get_secret_value() == "inline-secret"

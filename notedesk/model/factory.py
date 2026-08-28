@@ -24,7 +24,7 @@ class ModelFactory:
         if config.provider is not Provider.DEEPSEEK:
             raise ValueError(f"Unsupported provider: {config.provider}")
 
-        api_key = os.getenv(config.api_key_env)
+        api_key = config.api_key or os.getenv(config.api_key_env or "")
         if not api_key:
             raise EnvironmentError(
                 f"Missing required environment variable: {config.api_key_env}"

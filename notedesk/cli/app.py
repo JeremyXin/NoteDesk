@@ -91,6 +91,7 @@ def doctor(config_path: Path | None = typer.Option(None, exists=False)) -> None:
     typer.echo(f"AgentScope: {version('agentscope')}")
     typer.echo(f"Workspace: {settings.workspace}")
     typer.echo(f"Artifacts: {settings.artifacts.root}")
+    typer.echo(f"DeepSeek API key: {_deepseek_key_source(settings)}")
     typer.echo(f"Twitter CLI: {shutil.which('twitter') or 'not found'}")
 
 
@@ -153,8 +154,11 @@ def _migrate_legacy_config_text(text: str) -> str:
         "",
         "[deepseek]",
         f'model = "{deepseek.get("model", "deepseek-chat")}"',
-        f'api_key_env = "{deepseek.get("api_key_env", "DEEPSEEK_API_KEY")}"',
     ]
+    if deepseek.get("api_key"):
+        lines.append(f'api_key = "{deepseek["api_key"]}"')
+    else:
+        lines.append(f'api_key_env = "{deepseek.get("api_key_env", "DEEPSEEK_API_KEY")}"')
     if deepseek.get("base_url"):
         lines.append(f'base_url = "{deepseek["base_url"]}"')
     lines.extend(
@@ -205,3 +209,9 @@ def launch_tui(settings: AppSettings, tui: NoteDeskTUI | None = None) -> None:
         controller.deny_permission()
     )
     application.run()
+
+
+def _deepseek_key_source(settings: AppSettings) -> str:
+    if settings.deepseek.api_key:
+        return "inline-config"
+    return f"env:{settings.deepseek.api_key_env}"

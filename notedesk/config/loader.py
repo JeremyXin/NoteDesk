@@ -49,7 +49,7 @@ def load_settings(config_path: Path) -> AppSettings:
     workspace = _resolve_workspace(config_path, raw.get("workspace"))
 
     deepseek = DeepSeekSettings.model_validate(raw["deepseek"])
-    if not os.getenv(deepseek.api_key_env):
+    if deepseek.api_key is None and not os.getenv(deepseek.api_key_env or ""):
         raise EnvironmentError(f"Missing required environment variable: {deepseek.api_key_env}")
 
     artifacts_root = _resolve_path(workspace, raw["artifacts"]["root"])

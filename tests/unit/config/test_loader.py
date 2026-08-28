@@ -139,6 +139,41 @@ path = "skills"
         load_settings(config_path)
 
 
+def test_load_settings_accepts_inline_api_key_without_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    skill_root = workspace / "skills"
+    skill_root.mkdir(parents=True)
+    (workspace / "artifacts").mkdir()
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    config_path = workspace / "config.toml"
+    config_path.write_text(
+        """
+workspace = "."
+
+[deepseek]
+model = "deepseek-chat"
+api_key = "inline-secret"
+
+[artifacts]
+root = "artifacts"
+
+[permissions]
+mode = "accept_edits"
+
+[[skill_roots]]
+path = "skills"
+""".strip()
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.deepseek.api_key == "inline-secret"
+    assert settings.deepseek.api_key_env is None
+
+
 def test_load_settings_rejects_relative_workspace_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
     config_path = tmp_path / "notedesk.toml"

@@ -29,6 +29,7 @@ def build_default_role_map(settings: AppSettings) -> ModelRoleMap:
             "default": NamedModelConfig(
                 provider=Provider.DEEPSEEK,
                 model=settings.deepseek.model,
+                api_key=settings.deepseek.api_key,
                 api_key_env=settings.deepseek.api_key_env,
                 base_url=settings.deepseek.base_url,
                 temperature=0.2,

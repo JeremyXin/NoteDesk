@@ -44,6 +44,17 @@ def test_model_role_map_rejects_missing_api_key_env_name() -> None:
         )
 
 
+def test_model_role_map_accepts_inline_api_key_without_env_name() -> None:
+    config = NamedModelConfig(
+        provider=Provider.DEEPSEEK,
+        model="deepseek-chat",
+        api_key="inline-secret",
+    )
+
+    assert config.api_key == "inline-secret"
+    assert config.api_key_env is None
+
+
 def test_model_role_map_rejects_illegal_model_parameters() -> None:
     with pytest.raises(ValidationError):
         NamedModelConfig(
@@ -52,4 +63,3 @@ def test_model_role_map_rejects_illegal_model_parameters() -> None:
             api_key_env="DEEPSEEK_API_KEY",
             temperature=3.0,
         )
-

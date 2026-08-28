@@ -12,7 +12,8 @@ class Provider(str, Enum):
 class NamedModelConfig(BaseModel):
     provider: Provider
     model: str
-    api_key_env: str
+    api_key: str | None = None
+    api_key_env: str | None = None
     base_url: str | None = None
     temperature: float = 0.0
     max_tokens: int | None = None
@@ -23,10 +24,14 @@ class NamedModelConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_values(self) -> "NamedModelConfig":
-        if not self.api_key_env.strip():
-            raise ValueError("api_key_env must not be empty")
         if not self.model.strip():
             raise ValueError("model must not be empty")
+        if self.api_key is not None and not self.api_key.strip():
+            raise ValueError("api_key must not be empty")
+        if self.api_key_env is not None and not self.api_key_env.strip():
+            raise ValueError("api_key_env must not be empty")
+        if not self.api_key and not self.api_key_env:
+            raise ValueError("either api_key or api_key_env must be configured")
         if not 0.0 <= self.temperature <= 2.0:
             raise ValueError("temperature must be between 0.0 and 2.0")
         if self.max_tokens is not None and self.max_tokens <= 0:
