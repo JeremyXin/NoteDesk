@@ -221,6 +221,28 @@ def test_resolve_config_path_falls_back_to_legacy_config(tmp_path: Path) -> None
     assert resolved == legacy_config
 
 
+def test_resolve_config_path_searches_parent_directories(tmp_path: Path) -> None:
+    root_config = tmp_path / "config.toml"
+    nested_cwd = tmp_path / "notedesk" / "agent"
+    nested_cwd.mkdir(parents=True)
+    root_config.write_text("workspace = \".\"\n")
+
+    resolved = resolve_config_path(None, cwd=nested_cwd)
+
+    assert resolved == root_config
+
+
+def test_resolve_config_path_searches_parent_virtualenv_directories(tmp_path: Path) -> None:
+    root_config = tmp_path / "config.toml"
+    venv_bin = tmp_path / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    root_config.write_text("workspace = \".\"\n")
+
+    resolved = resolve_config_path(None, cwd=venv_bin)
+
+    assert resolved == root_config
+
+
 def test_resolve_config_path_uses_explicit_path_when_provided(tmp_path: Path) -> None:
     explicit = tmp_path / "custom.toml"
 

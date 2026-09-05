@@ -34,14 +34,17 @@ def resolve_config_path(config_path: Path | None, cwd: Path | None = None) -> Pa
     if config_path is not None:
         return config_path
 
-    base = cwd or Path.cwd()
-    root_config = base / ROOT_CONFIG_PATH
-    legacy_config = base / LEGACY_CONFIG_PATH
-    if root_config.exists():
-        return root_config
-    if legacy_config.exists():
-        return legacy_config
-    return root_config
+    base = (cwd or Path.cwd()).resolve()
+    for candidate_base in (base, *base.parents):
+        root_config = candidate_base / ROOT_CONFIG_PATH
+        if root_config.exists():
+            return root_config
+
+        legacy_config = candidate_base / LEGACY_CONFIG_PATH
+        if legacy_config.exists():
+            return legacy_config
+
+    return base / ROOT_CONFIG_PATH
 
 
 def load_settings(config_path: Path) -> AppSettings:
