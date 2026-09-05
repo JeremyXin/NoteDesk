@@ -23,6 +23,10 @@ dev = [
 [project.scripts]
 notedesk = "notedesk.cli.app:main"
 
+[tool.setuptools.packages.find]
+include = ["notedesk*"]
+exclude = ["skills*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
