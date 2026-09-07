@@ -220,3 +220,6 @@ __marimo__/
 __pycache__/
 .pytest_cache/
 *.pyc
+
+# Local agent instructions
+/AGENTS.md

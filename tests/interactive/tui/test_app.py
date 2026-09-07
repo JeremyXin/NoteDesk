@@ -2,6 +2,8 @@ from pathlib import Path
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.input.defaults import create_pipe_input
+from prompt_toolkit.layout import VerticalAlign, WindowAlign
+from prompt_toolkit.layout.containers import HSplit, VSplit
 from prompt_toolkit.output import DummyOutput
 
 from notedesk.agent.events import PermissionRequestEvent
@@ -31,8 +33,37 @@ def test_tui_builds_prompt_toolkit_application(tmp_path: Path) -> None:
     application = app.build_application()
 
     assert isinstance(application, Application)
+    assert application.full_screen is True
+    assert application.erase_when_done is True
+    assert application.layout.container.align == VerticalAlign.TOP
+    assert app.transcript_field.window.height.weight == 1
     assert app.input_field is not None
     assert app.transcript_field is not None
+
+
+def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / ".notedesk" / "artifacts",
+    )
+
+    application = app.build_application()
+    root = application.layout.container
+
+    assert isinstance(root, HSplit)
+    frame_body = root.children[0].children[1]
+    welcome_layout = frame_body.children[1].get_container()
+    assert isinstance(welcome_layout, VSplit)
+    assert isinstance(welcome_layout.children[0], HSplit)
+    assert isinstance(welcome_layout.children[2], HSplit)
+    brand_column = welcome_layout.children[0]
+    runtime_column = welcome_layout.children[2]
+    assert brand_column.children[0].align == WindowAlign.CENTER
+    assert runtime_column.children[0].align == WindowAlign.LEFT
+    assert "Welcome back!" in app.render_welcome_brand()
+    assert "workspace:" in app.render_welcome_runtime()
+    assert ".notedesk/artifacts" in app.render_welcome_runtime()
+    assert "Tips for getting started" in app.render_welcome_tips_header()
 
 
 def test_tui_welcome_panel_matches_cli_agent_style(tmp_path: Path) -> None:
@@ -44,9 +75,12 @@ def test_tui_welcome_panel_matches_cli_agent_style(tmp_path: Path) -> None:
     welcome = app.render_welcome_panel()
 
     assert "Welcome back!" in welcome
-    assert "╭─▣─╮" in welcome
+    assert "+-------+" in welcome
+    assert "NOTE" in welcome
+    assert "DESK" in welcome
+    assert "| N/D |" not in welcome
     assert "NoteDesk" in welcome
-    assert "Tips for getting started" in welcome
+    assert "Enter send" in welcome
     assert "Esc+Enter" in welcome
     assert ".notedesk/artifacts" in welcome
 
