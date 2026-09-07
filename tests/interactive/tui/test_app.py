@@ -37,6 +37,9 @@ def test_tui_builds_prompt_toolkit_application(tmp_path: Path) -> None:
     assert application.erase_when_done is True
     assert application.layout.container.align == VerticalAlign.TOP
     assert app.transcript_field.window.height.weight == 1
+    bottom_dock = application.layout.container.children[-1]
+    assert isinstance(bottom_dock, HSplit)
+    assert bottom_dock.height.preferred == 3
     assert app.input_field is not None
     assert app.transcript_field is not None
 
@@ -51,7 +54,7 @@ def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None
     root = application.layout.container
 
     assert isinstance(root, HSplit)
-    frame_body = root.children[0].children[1]
+    frame_body = root.children[0].children[0].children[1]
     welcome_layout = frame_body.children[1].get_container()
     assert isinstance(welcome_layout, VSplit)
     assert isinstance(welcome_layout.children[0], HSplit)

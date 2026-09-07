@@ -147,7 +147,7 @@ class NoteDeskTUI:
             title="NoteDesk",
             height=Dimension(min=11, max=11, preferred=11),
         )
-        root = HSplit(
+        main_content = HSplit(
             [
                 welcome_panel,
                 Window(
@@ -156,6 +156,12 @@ class NoteDeskTUI:
                 ),
                 self.transcript_field,
                 task_drawer,
+            ],
+            height=Dimension(weight=1),
+            align=VerticalAlign.TOP,
+        )
+        bottom_dock = HSplit(
+            [
                 Window(char="-", height=1),
                 self.input_field,
                 Window(char="-", height=1),
@@ -164,6 +170,11 @@ class NoteDeskTUI:
                     height=1,
                 ),
             ],
+            height=Dimension(min=3, max=6, preferred=3),
+            align=VerticalAlign.TOP,
+        )
+        root = HSplit(
+            [main_content, bottom_dock],
             align=VerticalAlign.TOP,
         )
         return Application(
