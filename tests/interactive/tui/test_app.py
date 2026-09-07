@@ -105,7 +105,9 @@ def test_tui_input_area_is_compact(tmp_path: Path) -> None:
         artifact_root=tmp_path / "artifacts",
     )
 
+    assert app.input_field.window.height.preferred == 1
     assert app.input_field.window.height.max == 4
+    assert app.input_field.window.dont_extend_height() is True
 
 
 def test_tui_task_drawer_can_toggle_and_render_snapshot(tmp_path: Path) -> None:

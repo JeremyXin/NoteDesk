@@ -42,7 +42,8 @@ class NoteDeskTUI:
             text="",
             multiline=True,
             prompt="> ",
-            height=Dimension(min=1, max=4),
+            height=Dimension(min=1, max=4, preferred=1),
+            dont_extend_height=True,
         )
         self.task_field = TextArea(
             text="No active tasks.",
