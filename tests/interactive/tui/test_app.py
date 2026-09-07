@@ -35,6 +35,45 @@ def test_tui_builds_prompt_toolkit_application(tmp_path: Path) -> None:
     assert app.transcript_field is not None
 
 
+def test_tui_welcome_panel_matches_cli_agent_style(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / ".notedesk" / "artifacts",
+    )
+
+    welcome = app.render_welcome_panel()
+
+    assert "Welcome back!" in welcome
+    assert "╭─▣─╮" in welcome
+    assert "NoteDesk" in welcome
+    assert "Tips for getting started" in welcome
+    assert "Esc+Enter" in welcome
+    assert ".notedesk/artifacts" in welcome
+
+
+def test_tui_status_bar_uses_short_operational_footer(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / ".notedesk" / "artifacts",
+    )
+
+    status = app.render_status_bar()
+
+    assert "Idle" in status
+    assert "Ctrl-T tasks" in status
+    assert str(tmp_path) not in status
+    assert "Artifacts:" not in status
+
+
+def test_tui_input_area_is_compact(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+
+    assert app.input_field.window.height.max == 4
+
+
 def test_tui_task_drawer_can_toggle_and_render_snapshot(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,
@@ -163,7 +202,7 @@ def test_tui_renders_permission_and_artifact_messages(tmp_path: Path) -> None:
     )
 
     assert "Permission required for tool action" in app.transcript_field.text
-    assert "Ctrl-Y approve / Ctrl-N deny" in app.transcript_field.text
+    assert "Ctrl-Y approve · Ctrl-N deny" in app.transcript_field.text
     assert "summary.md" in app.transcript_field.text
 
 

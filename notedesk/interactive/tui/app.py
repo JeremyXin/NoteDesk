@@ -10,7 +10,7 @@ from prompt_toolkit.layout.containers import ConditionalContainer, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.filters import Condition
-from prompt_toolkit.widgets import Frame, TextArea
+from prompt_toolkit.widgets import TextArea
 
 from notedesk.agent.events import PermissionRequestEvent
 from notedesk.agent.middleware import TaskSnapshot
@@ -33,17 +33,17 @@ class NoteDeskTUI:
         self.transcript_field = TextArea(
             text="",
             read_only=True,
-            scrollbar=True,
+            scrollbar=False,
             focusable=False,
         )
         self.input_field = TextArea(
             text="",
             multiline=True,
             prompt="> ",
-            height=Dimension(min=3),
+            height=Dimension(min=1, max=4),
         )
         self.task_field = TextArea(
-            text="No tasks yet.",
+            text="No active tasks.",
             read_only=True,
             focusable=False,
         )
@@ -57,14 +57,33 @@ class NoteDeskTUI:
 
     def build_application(self, input=None, output=None) -> Application:
         task_drawer = ConditionalContainer(
-            content=Frame(self.task_field, title="Tasks"),
+            content=HSplit(
+                [
+                    Window(char="-", height=1),
+                    Window(
+                        content=FormattedTextControl(self.render_task_header),
+                        height=1,
+                    ),
+                    self.task_field,
+                ]
+            ),
             filter=Condition(lambda: self.task_drawer_open),
         )
         root = HSplit(
             [
-                Frame(self.transcript_field, title="Transcript"),
+                Window(
+                    content=FormattedTextControl(self.render_welcome_panel),
+                    height=Dimension(preferred=14),
+                ),
+                Window(
+                    content=FormattedTextControl(self.render_setup_notice),
+                    height=1,
+                ),
+                self.transcript_field,
                 task_drawer,
-                Frame(self.input_field, title="Input"),
+                Window(char="-", height=1),
+                self.input_field,
+                Window(char="-", height=1),
                 Window(
                     content=FormattedTextControl(self.render_status_bar),
                     height=1,
@@ -89,7 +108,7 @@ class NoteDeskTUI:
             for row in view.rows
         ]
         footer = f"{view.completed_count}/{view.total_count} completed"
-        self.task_field.text = "\n".join(lines + [footer]) if lines else "No tasks yet."
+        self.task_field.text = "\n".join(lines + [footer]) if lines else "No active tasks."
 
     def append_transcript(self, line: str) -> None:
         prefix = "\n" if self.transcript_field.text else ""
@@ -98,14 +117,43 @@ class NoteDeskTUI:
     def set_status(self, status: str) -> None:
         self.status_text = status
 
+    def render_welcome_panel(self) -> str:
+        artifact_path = self._display_path(self.artifact_root)
+        workspace_path = self._display_path(self.workspace)
+        return (
+            "╭─── NoteDesk ─────────────────────────────────────────────────────────╮\n"
+            "│                         Welcome back!                                │\n"
+            "│                                                                      │\n"
+            "│                            ╭─▣─╮                                     │\n"
+            "│                            │ ◦ │                                     │\n"
+            "│                            ╰─╋─╯                                     │\n"
+            "│                              ╹                                       │\n"
+            "│   deepseek-chat · local-first knowledge agent                        │\n"
+            "│   Tips for getting started: Enter send · Esc+Enter newline           │\n"
+            "│   Ctrl-T tasks · Ctrl-Y approve · Ctrl-N deny                        │\n"
+            f"│   workspace: {workspace_path:<55.55}│\n"
+            f"│   artifacts: {artifact_path:<55.55}│\n"
+            "╰──────────────────────────────────────────────────────────────────────╯"
+        )
+
+    def render_setup_notice(self) -> str:
+        return "! confirm mode enabled · Ctrl-Y approve · Ctrl-N deny · /doctor"
+
+    def render_task_header(self) -> str:
+        return "Tasks · read-only snapshot"
+
     def render_status_bar(self) -> str:
-        drawer = "Tasks: open" if self.task_drawer_open else "Tasks: closed"
-        return f"{self.status_text} | {drawer} | Artifacts: {self.artifact_root}"
+        drawer = "Tasks open" if self.task_drawer_open else "Tasks closed"
+        return (
+            f"{self.status_text} · {drawer} · Enter send · "
+            "Esc+Enter newline · Ctrl-T tasks · Ctrl-C clear/exit"
+        )
 
     def handle_submit(self) -> None:
         submitted = self.input_field.text.strip()
         if not submitted:
             return
+        self.append_transcript(f"> {submitted}")
         self.on_submit(submitted)
         self.input_field.text = ""
         self.set_status("Submitted")
@@ -128,13 +176,13 @@ class NoteDeskTUI:
     def show_permission_request(self, event: PermissionRequestEvent) -> None:
         self.pending_permission = event
         self.append_transcript(
-            f"Permission: {event.summary} [Ctrl-Y approve / Ctrl-N deny]"
+            f"! Permission needed: {event.summary} · Ctrl-Y approve · Ctrl-N deny"
         )
         self.set_status("Waiting for permission")
 
     def show_artifact_receipt(self, receipt: ArtifactReceipt) -> None:
         self.append_transcript(
-            f"Artifact saved: {receipt.path.name} ({receipt.bytes_written} bytes)"
+            f"* Saved artifact: {self._display_path(receipt.path)} ({receipt.bytes_written} bytes)"
         )
         self.set_status("Artifact saved")
 
@@ -193,3 +241,9 @@ class NoteDeskTUI:
             event.app.invalidate()
 
         return kb
+
+    def _display_path(self, path: Path) -> str:
+        try:
+            return str(path.relative_to(self.workspace))
+        except ValueError:
+            return str(path)

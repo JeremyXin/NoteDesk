@@ -2,7 +2,7 @@ workspace = "."
 
 [deepseek]
 model = "deepseek-chat"
-api_key_env = "DEEPSEEK_API_KEY"
+api_key = "sk-dfbb354e9cff490299951ac541c78d9d"
 
 [artifacts]
 root = ".notedesk/artifacts"
