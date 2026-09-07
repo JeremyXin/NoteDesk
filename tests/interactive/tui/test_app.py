@@ -58,9 +58,10 @@ def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None
     welcome_layout = frame_body.children[1].get_container()
     assert isinstance(welcome_layout, VSplit)
     assert isinstance(welcome_layout.children[0], HSplit)
-    assert isinstance(welcome_layout.children[2], HSplit)
+    assert welcome_layout.children[2].width.preferred == 2
+    assert isinstance(welcome_layout.children[3], HSplit)
     brand_column = welcome_layout.children[0]
-    runtime_column = welcome_layout.children[2]
+    runtime_column = welcome_layout.children[3]
     assert brand_column.children[0].align == WindowAlign.CENTER
     assert runtime_column.children[0].align == WindowAlign.LEFT
     assert "Welcome back!" in app.render_welcome_brand()

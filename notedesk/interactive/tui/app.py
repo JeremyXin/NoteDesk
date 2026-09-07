@@ -119,6 +119,10 @@ class NoteDeskTUI:
                         width=Dimension(weight=3),
                     ),
                     Window(char="│", width=1),
+                    Window(
+                        char=" ",
+                        width=Dimension(min=2, max=2, preferred=2),
+                    ),
                     HSplit(
                         [
                             self._welcome_window(
