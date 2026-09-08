@@ -141,7 +141,10 @@ class NoteDeskTUI:
                             ),
                             self._welcome_window(self.render_welcome_workspace),
                             self._welcome_window(self.render_welcome_artifacts),
-                            self._welcome_window(self.render_welcome_shortcuts),
+                            self._welcome_window(
+                                self.render_welcome_permissions,
+                                style="class:welcome.notice",
+                            ),
                         ],
                         align=VerticalAlign.CENTER,
                         width=Dimension(weight=5),
@@ -154,10 +157,6 @@ class NoteDeskTUI:
         main_content = HSplit(
             [
                 welcome_panel,
-                Window(
-                    content=FormattedTextControl(self.render_setup_notice),
-                    height=1,
-                ),
                 self.transcript_field,
                 task_drawer,
             ],
@@ -192,6 +191,7 @@ class NoteDeskTUI:
                     "welcome.logo": "bold",
                     "welcome.meta": "",
                     "welcome.value": "bold",
+                    "welcome.notice": "",
                 }
             ),
             input=input,
@@ -240,7 +240,7 @@ class NoteDeskTUI:
                 self.render_welcome_workspace(),
                 self.render_welcome_artifacts(),
                 self.render_welcome_tips_body(),
-                self.render_welcome_shortcuts(),
+                self.render_welcome_permissions(),
             ]
         )
 
@@ -284,8 +284,8 @@ class NoteDeskTUI:
         artifact_path = self._display_path(self.artifact_root)
         return f"artifacts:  {artifact_path}"
 
-    def render_welcome_shortcuts(self) -> str:
-        return "Ctrl-T tasks · Ctrl-Y approve · Ctrl-N deny · /doctor"
+    def render_welcome_permissions(self) -> str:
+        return "permissions: confirm edits"
 
     def _welcome_window(
         self,

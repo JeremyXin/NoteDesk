@@ -62,6 +62,7 @@ def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None
     assert isinstance(welcome_layout.children[3], HSplit)
     brand_column = welcome_layout.children[0]
     runtime_column = welcome_layout.children[3]
+    assert len(runtime_column.children) == 8
     assert brand_column.children[0].align == WindowAlign.CENTER
     assert runtime_column.align == VerticalAlign.CENTER
     assert runtime_column.children[0].align == WindowAlign.LEFT
@@ -69,6 +70,7 @@ def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None
     assert "workspace:" in app.render_welcome_runtime()
     assert ".notedesk/artifacts" in app.render_welcome_runtime()
     assert "Tips for getting started" in app.render_welcome_tips_header()
+    assert "permissions: confirm edits" in app.render_welcome_permissions()
 
 
 def test_tui_welcome_panel_matches_cli_agent_style(tmp_path: Path) -> None:
