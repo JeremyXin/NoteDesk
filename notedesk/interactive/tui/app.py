@@ -143,7 +143,7 @@ class NoteDeskTUI:
                             self._welcome_window(self.render_welcome_artifacts),
                             self._welcome_window(self.render_welcome_shortcuts),
                         ],
-                        align=VerticalAlign.TOP,
+                        align=VerticalAlign.CENTER,
                         width=Dimension(weight=5),
                     ),
                 ]
