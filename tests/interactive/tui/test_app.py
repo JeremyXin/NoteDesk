@@ -3,7 +3,7 @@ from pathlib import Path
 from prompt_toolkit.application import Application
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.layout import VerticalAlign, WindowAlign
-from prompt_toolkit.layout.containers import HSplit, VSplit
+from prompt_toolkit.layout.containers import ConditionalContainer, HSplit, VSplit
 from prompt_toolkit.output import DummyOutput
 
 from notedesk.agent.events import PermissionRequestEvent
@@ -54,7 +54,7 @@ def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None
     root = application.layout.container
 
     assert isinstance(root, HSplit)
-    frame_body = root.children[0].children[0].content.children[1]
+    frame_body = root.children[0].children[0].children[1]
     welcome_layout = frame_body.children[1].get_container()
     assert isinstance(welcome_layout, VSplit)
     assert isinstance(welcome_layout.children[0], HSplit)
@@ -192,15 +192,19 @@ def test_tui_uses_mouse_scrolling_without_visible_scrollbar(tmp_path: Path) -> N
     assert application.mouse_support()
 
 
-def test_tui_hides_welcome_panel_after_conversation_starts(tmp_path: Path) -> None:
+def test_tui_keeps_welcome_panel_after_conversation_starts(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,
         artifact_root=tmp_path / "artifacts",
     )
+    application = app.build_application()
 
-    assert app.is_welcome_visible()
     app.append_transcript("You  > hello")
-    assert not app.is_welcome_visible()
+
+    assert not isinstance(
+        application.layout.container.children[0].children[0],
+        ConditionalContainer,
+    )
 
 
 def test_tui_scroll_transcript_moves_cursor_through_history(tmp_path: Path) -> None:

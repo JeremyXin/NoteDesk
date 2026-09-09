@@ -156,10 +156,6 @@ class NoteDeskTUI:
             title="NoteDesk",
             height=Dimension(min=11, max=11, preferred=11),
         )
-        welcome_panel = ConditionalContainer(
-            content=welcome_panel,
-            filter=Condition(self.is_welcome_visible),
-        )
         main_content = HSplit(
             [
                 welcome_panel,
@@ -207,9 +203,6 @@ class NoteDeskTUI:
 
     def toggle_task_drawer(self) -> None:
         self.task_drawer_open = not self.task_drawer_open
-
-    def is_welcome_visible(self) -> bool:
-        return not bool(self.transcript_field.text)
 
     def scroll_transcript(self, lines: int) -> None:
         if lines < 0:
