@@ -168,6 +168,19 @@ def test_tui_keeps_transcript_cursor_at_end_after_append(tmp_path: Path) -> None
     assert app.transcript_field.buffer.cursor_position == len(app.transcript_field.text)
 
 
+def test_tui_formats_user_turns_and_keeps_transcript_scrollable(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+
+    app.input_field.text = "hello"
+    app.handle_submit()
+
+    assert app.transcript_field.text == "You  > hello"
+    assert app.transcript_field.window.right_margins
+
+
 def test_tui_can_submit_and_clear_input(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,
@@ -259,7 +272,8 @@ def test_tui_renders_permission_and_artifact_messages(tmp_path: Path) -> None:
 
     assert "Permission required for tool action" in app.transcript_field.text
     assert "Ctrl-Y approve · Ctrl-N deny" in app.transcript_field.text
-    assert "summary.md" in app.transcript_field.text
+    assert "summary.md" not in app.transcript_field.text
+    assert app.status_text == "Artifact saved"
 
 
 def test_tui_ctrl_c_requests_exit_when_input_is_empty(tmp_path: Path) -> None:

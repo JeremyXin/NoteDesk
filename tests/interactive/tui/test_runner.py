@@ -21,6 +21,7 @@ class FakeRuntime:
         await self.ui_queue.put(ReplyLifecycleEvent(phase="start", reply_id="r1"))
         await self.ui_queue.put(TextDeltaEvent(delta="hello"))
         await self.ui_queue.put(TextDeltaEvent(delta=" world"))
+        await self.ui_queue.put(TextDeltaEvent(delta="\nnext"))
         await self.ui_queue.put(
             TaskSnapshotEvent(
                 snapshot=TaskSnapshot(
@@ -67,8 +68,10 @@ def test_tui_session_controller_submits_and_drains_events(tmp_path: Path) -> Non
     asyncio.run(controller.submit_prompt("Summarize this"))
 
     assert runtime.submitted == ["Summarize this"]
-    assert "hello world" in tui.transcript_field.text
+    assert "NoteDesk > hello world" in tui.transcript_field.text
     assert "hello\n world" not in tui.transcript_field.text
+    assert tui.transcript_field.text.count("NoteDesk >") == 1
+    assert "hello world\nnext" in tui.transcript_field.text
     assert "Collect tweets" in tui.task_field.text
 
 
@@ -83,4 +86,5 @@ def test_tui_session_controller_approves_permission_and_renders_receipt(tmp_path
     asyncio.run(controller.approve_permission())
 
     assert runtime.approved == 1
-    assert "summary.md" in tui.transcript_field.text
+    assert "summary.md" not in tui.transcript_field.text
+    assert tui.status_text == "Artifact saved"

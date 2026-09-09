@@ -36,7 +36,7 @@ class NoteDeskTUI:
         self.transcript_field = TextArea(
             text="",
             read_only=True,
-            scrollbar=False,
+            scrollbar=True,
             focusable=False,
             height=Dimension(weight=1),
         )
@@ -213,20 +213,23 @@ class NoteDeskTUI:
         self.task_field.text = "\n".join(lines + [footer]) if lines else "No active tasks."
 
     def append_transcript(self, line: str) -> None:
-        prefix = "\n" if self.transcript_field.text else ""
+        prefix = (
+            "\n"
+            if self.transcript_field.text and not self.transcript_field.text.endswith("\n")
+            else ""
+        )
         self._set_transcript_text(f"{self.transcript_field.text}{prefix}{line}")
         self._transcript_line_boundary = True
 
     def append_transcript_delta(self, delta: str) -> None:
         if not delta:
             return
-        if (
-            self._transcript_line_boundary
-            and self.transcript_field.text
-            and not self.transcript_field.text.endswith("\n")
-        ):
-            self._set_transcript_text(f"{self.transcript_field.text}\n")
-        self._set_transcript_text(f"{self.transcript_field.text}{delta}")
+        text = self.transcript_field.text
+        if self._transcript_line_boundary and text and not text.endswith("\n"):
+            text += "\n"
+        if self._transcript_line_boundary or not text:
+            text += "NoteDesk > "
+        self._set_transcript_text(f"{text}{delta}")
         self._transcript_line_boundary = False
 
     def _set_transcript_text(self, text: str) -> None:
@@ -339,7 +342,7 @@ class NoteDeskTUI:
         submitted = self.input_field.text.strip()
         if not submitted:
             return
-        self.append_transcript(f"> {submitted}")
+        self.append_transcript(f"You  > {submitted}")
         self.on_submit(submitted)
         self.input_field.text = ""
         self.set_status("Submitted")
@@ -367,9 +370,6 @@ class NoteDeskTUI:
         self.set_status("Waiting for permission")
 
     def show_artifact_receipt(self, receipt: ArtifactReceipt) -> None:
-        self.append_transcript(
-            f"* Saved artifact: {self._display_path(receipt.path)} ({receipt.bytes_written} bytes)"
-        )
         self.set_status("Artifact saved")
 
     def handle_approve_permission(self) -> None:
