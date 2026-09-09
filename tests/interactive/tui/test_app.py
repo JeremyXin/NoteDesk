@@ -54,7 +54,7 @@ def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None
     root = application.layout.container
 
     assert isinstance(root, HSplit)
-    frame_body = root.children[0].children[0].children[1]
+    frame_body = root.children[0].children[0].content.children[1]
     welcome_layout = frame_body.children[1].get_container()
     assert isinstance(welcome_layout, VSplit)
     assert isinstance(welcome_layout.children[0], HSplit)
@@ -178,7 +178,42 @@ def test_tui_formats_user_turns_and_keeps_transcript_scrollable(tmp_path: Path) 
     app.handle_submit()
 
     assert app.transcript_field.text == "You  > hello"
-    assert app.transcript_field.window.right_margins
+    assert not app.transcript_field.window.right_margins
+
+
+def test_tui_uses_mouse_scrolling_without_visible_scrollbar(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    application = app.build_application()
+
+    assert not app.transcript_field.window.right_margins
+    assert application.mouse_support()
+
+
+def test_tui_hides_welcome_panel_after_conversation_starts(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+
+    assert app.is_welcome_visible()
+    app.append_transcript("You  > hello")
+    assert not app.is_welcome_visible()
+
+
+def test_tui_scroll_transcript_moves_cursor_through_history(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    app.append_transcript("\n".join(f"line {index}" for index in range(20)))
+    end_position = app.transcript_field.buffer.cursor_position
+
+    app.scroll_transcript(-3)
+
+    assert app.transcript_field.buffer.cursor_position < end_position
 
 
 def test_tui_can_submit_and_clear_input(tmp_path: Path) -> None:

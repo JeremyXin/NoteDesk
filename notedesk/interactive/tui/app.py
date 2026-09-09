@@ -36,7 +36,7 @@ class NoteDeskTUI:
         self.transcript_field = TextArea(
             text="",
             read_only=True,
-            scrollbar=True,
+            scrollbar=False,
             focusable=False,
             height=Dimension(weight=1),
         )
@@ -156,6 +156,10 @@ class NoteDeskTUI:
             title="NoteDesk",
             height=Dimension(min=11, max=11, preferred=11),
         )
+        welcome_panel = ConditionalContainer(
+            content=welcome_panel,
+            filter=Condition(self.is_welcome_visible),
+        )
         main_content = HSplit(
             [
                 welcome_panel,
@@ -187,6 +191,7 @@ class NoteDeskTUI:
             key_bindings=self._build_key_bindings(),
             full_screen=True,
             erase_when_done=True,
+            mouse_support=True,
             style=Style.from_dict(
                 {
                     "welcome.heading": "bold",
@@ -202,6 +207,19 @@ class NoteDeskTUI:
 
     def toggle_task_drawer(self) -> None:
         self.task_drawer_open = not self.task_drawer_open
+
+    def is_welcome_visible(self) -> bool:
+        return not bool(self.transcript_field.text)
+
+    def scroll_transcript(self, lines: int) -> None:
+        if lines < 0:
+            self.transcript_field.buffer.cursor_up(-lines)
+        elif lines > 0:
+            self.transcript_field.buffer.cursor_down(lines)
+        self.transcript_field.window.vertical_scroll = max(
+            0,
+            self.transcript_field.window.vertical_scroll + lines,
+        )
 
     def update_task_snapshot(self, snapshot: TaskSnapshot) -> None:
         view = TaskViewModel.from_snapshot(snapshot)
@@ -237,6 +255,7 @@ class NoteDeskTUI:
             Document(text, cursor_position=len(text)),
             bypass_readonly=True,
         )
+        self.transcript_field.window.vertical_scroll = 10**9
 
     def set_status(self, status: str) -> None:
         self.status_text = status
@@ -424,6 +443,16 @@ class NoteDeskTUI:
         @kb.add("c-t")
         def _toggle_tasks(event) -> None:
             self.toggle_task_drawer()
+            event.app.invalidate()
+
+        @kb.add("<scroll-up>")
+        def _scroll_up(event) -> None:
+            self.scroll_transcript(-3)
+            event.app.invalidate()
+
+        @kb.add("<scroll-down>")
+        def _scroll_down(event) -> None:
+            self.scroll_transcript(3)
             event.app.invalidate()
 
         return kb
