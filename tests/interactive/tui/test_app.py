@@ -35,13 +35,24 @@ def test_tui_builds_prompt_toolkit_application(tmp_path: Path) -> None:
     assert isinstance(application, Application)
     assert application.full_screen is True
     assert application.erase_when_done is True
-    assert application.layout.container.align == VerticalAlign.TOP
+    assert application.layout.container.align == VerticalAlign.JUSTIFY
     assert app.transcript_field.window.height.weight == 1
     bottom_dock = application.layout.container.children[-1]
     assert isinstance(bottom_dock, HSplit)
     assert bottom_dock.height.preferred == 3
     assert app.input_field is not None
     assert app.transcript_field is not None
+
+
+def test_tui_root_layout_anchors_input_dock_to_bottom(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+
+    application = app.build_application()
+
+    assert application.layout.container.align == VerticalAlign.JUSTIFY
 
 
 def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None:

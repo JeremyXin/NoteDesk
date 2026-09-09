@@ -180,7 +180,7 @@ class NoteDeskTUI:
         )
         root = HSplit(
             [main_content, bottom_dock],
-            align=VerticalAlign.TOP,
+            align=VerticalAlign.JUSTIFY,
         )
         return Application(
             layout=Layout(root, focused_element=self.input_field),
