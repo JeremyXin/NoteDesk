@@ -46,7 +46,7 @@ class TUISessionController:
 
     def _apply_event(self, event: object) -> None:
         if isinstance(event, TextDeltaEvent):
-            self.tui.append_transcript(event.delta)
+            self.tui.append_transcript_delta(event.delta)
         elif isinstance(event, ToolLifecycleEvent):
             self.tui.append_transcript(f"Tool: {event.summary}")
         elif isinstance(event, PermissionRequestEvent):

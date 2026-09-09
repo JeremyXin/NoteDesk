@@ -155,6 +155,19 @@ def test_tui_appends_transcript_and_updates_status(tmp_path: Path) -> None:
     assert "Running" in app.render_status_bar()
 
 
+def test_tui_keeps_transcript_cursor_at_end_after_append(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+
+    app.append_transcript("> first")
+    app.append_transcript_delta("first reply")
+    app.append_transcript("> second")
+
+    assert app.transcript_field.buffer.cursor_position == len(app.transcript_field.text)
+
+
 def test_tui_can_submit_and_clear_input(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,

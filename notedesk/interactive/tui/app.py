@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Callable
 
 from prompt_toolkit.application import Application
+from prompt_toolkit.document import Document
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, VSplit, VerticalAlign, WindowAlign
 from prompt_toolkit.layout.containers import ConditionalContainer, Window
@@ -25,6 +26,7 @@ class NoteDeskTUI:
         self.artifact_root = artifact_root
         self.task_drawer_open = False
         self.status_text = "Idle"
+        self._transcript_line_boundary = False
         self.on_submit: Callable[[str], None] = lambda text: None
         self.on_cancel: Callable[[], None] = lambda: None
         self.on_approve_permission: Callable[[], None] = lambda: None
@@ -212,7 +214,26 @@ class NoteDeskTUI:
 
     def append_transcript(self, line: str) -> None:
         prefix = "\n" if self.transcript_field.text else ""
-        self.transcript_field.text += f"{prefix}{line}"
+        self._set_transcript_text(f"{self.transcript_field.text}{prefix}{line}")
+        self._transcript_line_boundary = True
+
+    def append_transcript_delta(self, delta: str) -> None:
+        if not delta:
+            return
+        if (
+            self._transcript_line_boundary
+            and self.transcript_field.text
+            and not self.transcript_field.text.endswith("\n")
+        ):
+            self._set_transcript_text(f"{self.transcript_field.text}\n")
+        self._set_transcript_text(f"{self.transcript_field.text}{delta}")
+        self._transcript_line_boundary = False
+
+    def _set_transcript_text(self, text: str) -> None:
+        self.transcript_field.buffer.set_document(
+            Document(text, cursor_position=len(text)),
+            bypass_readonly=True,
+        )
 
     def set_status(self, status: str) -> None:
         self.status_text = status
