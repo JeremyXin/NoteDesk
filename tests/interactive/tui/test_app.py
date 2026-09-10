@@ -203,6 +203,51 @@ def test_tui_uses_mouse_scrolling_without_visible_scrollbar(tmp_path: Path) -> N
     assert application.mouse_support()
 
 
+def test_tui_transcript_can_receive_focus_for_keyboard_selection(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+
+    assert app.transcript_field.control.is_focusable()
+    assert app.transcript_field.control.focus_on_click()
+
+
+def test_tui_copies_transcript_selection(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    app.append_transcript("copy this text")
+    app.transcript_field.buffer.cursor_position = 0
+    app.transcript_field.buffer.start_selection()
+    app.transcript_field.buffer.cursor_position = len("copy this")
+
+    copied = app.copy_transcript_selection()
+
+    assert copied is not None
+    assert copied.text == "copy this"
+    assert app.transcript_field.buffer.selection_state is None
+
+
+def test_tui_extends_transcript_selection_with_directional_movement(
+    tmp_path: Path,
+) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    app.append_transcript("select this")
+    app.transcript_field.buffer.cursor_position = 0
+
+    app.extend_transcript_selection("right")
+    app.extend_transcript_selection("right")
+    copied = app.copy_transcript_selection()
+
+    assert copied is not None
+    assert copied.text == "se"
+
+
 def test_tui_keeps_welcome_panel_after_conversation_starts(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,

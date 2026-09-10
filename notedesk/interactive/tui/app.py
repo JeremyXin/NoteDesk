@@ -41,7 +41,8 @@ class NoteDeskTUI:
             text="",
             read_only=True,
             scrollbar=False,
-            focusable=False,
+            focusable=True,
+            focus_on_click=True,
             height=Dimension(weight=1),
         )
         self.input_field = TextArea(
@@ -218,6 +219,40 @@ class NoteDeskTUI:
             0,
             self.transcript_field.window.vertical_scroll + lines,
         )
+
+    def copy_transcript_selection(self):
+        if self.transcript_field.buffer.selection_state is None:
+            return None
+        return self.transcript_field.buffer.copy_selection()
+
+    def extend_transcript_selection(self, movement: str) -> None:
+        buffer = self.transcript_field.buffer
+        if not buffer.text:
+            return
+        if buffer.selection_state is None:
+            buffer.start_selection()
+
+        if movement == "left":
+            buffer.cursor_left()
+        elif movement == "right":
+            buffer.cursor_right()
+        elif movement == "up":
+            buffer.cursor_up()
+        elif movement == "down":
+            buffer.cursor_down()
+        elif movement == "home":
+            buffer.cursor_position += buffer.document.get_start_of_line_position(
+                after_whitespace=False
+            )
+        elif movement == "end":
+            buffer.cursor_position += buffer.document.get_end_of_line_position()
+
+        selection_state = buffer.selection_state
+        if (
+            selection_state is not None
+            and buffer.cursor_position == selection_state.original_cursor_position
+        ):
+            buffer.exit_selection()
 
     def navigate_input_history(self, direction: int) -> None:
         if direction == 0:
@@ -430,7 +465,7 @@ class NoteDeskTUI:
     def _build_key_bindings(self) -> KeyBindings:
         kb = KeyBindings()
 
-        @kb.add("enter")
+        @kb.add("enter", filter=has_focus(self.input_field))
         def _submit(event) -> None:
             self.handle_submit()
             event.app.invalidate()
@@ -440,13 +475,20 @@ class NoteDeskTUI:
             self.handle_cancel()
             event.app.invalidate()
 
-        @kb.add("escape", "enter")
+        @kb.add("escape", "enter", filter=has_focus(self.input_field))
         def _newline(event) -> None:
             self.handle_insert_newline()
             event.app.invalidate()
 
         @kb.add("c-c")
         def _ctrl_c(event) -> None:
+            if event.current_buffer is self.transcript_field.buffer:
+                copied = self.copy_transcript_selection()
+                if copied is not None:
+                    event.app.clipboard.set_data(copied)
+                    self.set_status(f"Copied {len(copied.text)} chars")
+                    event.app.invalidate()
+                    return
             outcome = self.handle_ctrl_c()
             if outcome == "request_exit":
                 event.app.exit()
@@ -476,6 +518,26 @@ class NoteDeskTUI:
         def _scroll_down(event) -> None:
             self.scroll_transcript(3)
             event.app.invalidate()
+
+        @kb.add("s-left", filter=has_focus(self.transcript_field))
+        @kb.add("s-right", filter=has_focus(self.transcript_field))
+        @kb.add("s-up", filter=has_focus(self.transcript_field))
+        @kb.add("s-down", filter=has_focus(self.transcript_field))
+        @kb.add("s-home", filter=has_focus(self.transcript_field))
+        @kb.add("s-end", filter=has_focus(self.transcript_field))
+        def _extend_transcript_selection(event) -> None:
+            key = str(event.key_sequence[0].key)
+            movement = {
+                "Keys.ShiftLeft": "left",
+                "Keys.ShiftRight": "right",
+                "Keys.ShiftUp": "up",
+                "Keys.ShiftDown": "down",
+                "Keys.ShiftHome": "home",
+                "Keys.ShiftEnd": "end",
+            }.get(key)
+            if movement is not None:
+                self.extend_transcript_selection(movement)
+                event.app.invalidate()
 
         @kb.add("up", filter=has_focus(self.input_field))
         def _history_up(event) -> None:
