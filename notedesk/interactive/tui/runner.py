@@ -21,23 +21,44 @@ class TUISessionController:
 
     async def submit_prompt(self, prompt: str) -> None:
         self.tui.set_status("Running")
-        await self.runtime.run_once(prompt)
-        await self.drain_events()
+        await self._run_with_event_pump(self.runtime.run_once(prompt))
 
     async def approve_permission(self) -> None:
         self.tui.set_status("Permission approved")
-        await self.runtime.resume_permission(True)
-        await self.drain_events()
+        await self._run_with_event_pump(self.runtime.resume_permission(True))
 
     async def deny_permission(self) -> None:
         self.tui.set_status("Permission denied")
-        await self.runtime.resume_permission(False)
-        await self.drain_events()
+        await self._run_with_event_pump(self.runtime.resume_permission(False))
 
     async def cancel(self) -> None:
         self.tui.set_status("Cancelling")
-        await self.runtime.cancel()
-        await self.drain_events()
+        await self._run_with_event_pump(self.runtime.cancel())
+
+    async def _run_with_event_pump(self, operation) -> None:
+        run_task = asyncio.create_task(operation)
+        try:
+            while True:
+                event_task = asyncio.create_task(self.runtime.ui_queue.get())
+                done, _ = await asyncio.wait(
+                    {run_task, event_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                if event_task in done:
+                    self._apply_event(event_task.result())
+                else:
+                    event_task.cancel()
+                    await asyncio.gather(event_task, return_exceptions=True)
+
+                if run_task in done:
+                    run_task.result()
+                    await self.drain_events()
+                    return
+        finally:
+            if not run_task.done():
+                run_task.cancel()
+                await asyncio.gather(run_task, return_exceptions=True)
 
     async def drain_events(self) -> None:
         while not self.runtime.ui_queue.empty():
