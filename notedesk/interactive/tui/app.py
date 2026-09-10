@@ -11,6 +11,8 @@ from prompt_toolkit.layout.containers import ConditionalContainer, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.filters import Condition
+from prompt_toolkit.filters import has_focus
+from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
@@ -32,6 +34,8 @@ class NoteDeskTUI:
         self.on_approve_permission: Callable[[], None] = lambda: None
         self.on_deny_permission: Callable[[], None] = lambda: None
         self.pending_permission: PermissionRequestEvent | None = None
+        self.input_history = InMemoryHistory()
+        self._input_history_index: int | None = None
 
         self.transcript_field = TextArea(
             text="",
@@ -43,6 +47,7 @@ class NoteDeskTUI:
         self.input_field = TextArea(
             text="",
             multiline=True,
+            history=self.input_history,
             prompt="> ",
             height=Dimension(min=1, max=4, preferred=1),
             dont_extend_height=True,
@@ -214,6 +219,28 @@ class NoteDeskTUI:
             self.transcript_field.window.vertical_scroll + lines,
         )
 
+    def navigate_input_history(self, direction: int) -> None:
+        if direction == 0:
+            return
+        history = self.input_history.get_strings()
+        if not history:
+            return
+
+        if self._input_history_index is None:
+            self._input_history_index = len(history) if direction > 0 else len(history) - 1
+        else:
+            self._input_history_index += direction
+            self._input_history_index = max(
+                0,
+                min(self._input_history_index, len(history)),
+            )
+
+        if self._input_history_index == len(history):
+            self.input_field.text = ""
+        else:
+            self.input_field.text = history[self._input_history_index]
+            self.input_field.buffer.cursor_position = len(self.input_field.text)
+
     def update_task_snapshot(self, snapshot: TaskSnapshot) -> None:
         view = TaskViewModel.from_snapshot(snapshot)
         lines = [
@@ -354,9 +381,11 @@ class NoteDeskTUI:
         submitted = self.input_field.text.strip()
         if not submitted:
             return
+        self.input_history.append_string(submitted)
+        self._input_history_index = None
         self.append_transcript(f"You  > {submitted}")
         self.on_submit(submitted)
-        self.input_field.text = ""
+        self.input_field.buffer.reset()
         self.set_status("Submitted")
 
     def handle_cancel(self) -> None:
@@ -446,6 +475,16 @@ class NoteDeskTUI:
         @kb.add("<scroll-down>")
         def _scroll_down(event) -> None:
             self.scroll_transcript(3)
+            event.app.invalidate()
+
+        @kb.add("up", filter=has_focus(self.input_field))
+        def _history_up(event) -> None:
+            self.navigate_input_history(-1)
+            event.app.invalidate()
+
+        @kb.add("down", filter=has_focus(self.input_field))
+        def _history_down(event) -> None:
+            self.navigate_input_history(1)
             event.app.invalidate()
 
         return kb

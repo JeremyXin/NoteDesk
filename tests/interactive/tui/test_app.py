@@ -246,6 +246,25 @@ def test_tui_can_submit_and_clear_input(tmp_path: Path) -> None:
     assert app.input_field.text == ""
 
 
+def test_tui_input_arrows_recall_submitted_history(tmp_path: Path) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+
+    app.input_field.text = "first prompt"
+    app.handle_submit()
+    app.input_field.text = "second prompt"
+    app.handle_submit()
+
+    app.navigate_input_history(-1)
+    assert app.input_field.text == "second prompt"
+    app.navigate_input_history(-1)
+    assert app.input_field.text == "first prompt"
+    app.navigate_input_history(1)
+    assert app.input_field.text == "second prompt"
+
+
 def test_tui_cancel_path_updates_status(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,
