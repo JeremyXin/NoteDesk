@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Callable
 
@@ -224,6 +227,31 @@ class NoteDeskTUI:
         if self.transcript_field.buffer.selection_state is None:
             return None
         return self.transcript_field.buffer.copy_selection()
+
+    def copy_to_system_clipboard(self, text: str) -> bool:
+        if sys.platform == "darwin":
+            commands = [["pbcopy"]]
+        elif sys.platform == "win32":
+            commands = [["clip.exe"]]
+        else:
+            commands = [
+                ["wl-copy"],
+                ["xclip", "-selection", "clipboard"],
+                ["xsel", "--clipboard", "--input"],
+            ]
+
+        command = next(
+            (candidate for candidate in commands if shutil.which(candidate[0])),
+            None,
+        )
+        if command is None:
+            return False
+
+        try:
+            subprocess.run(command, input=text, text=True, check=True)
+        except (OSError, subprocess.CalledProcessError):
+            return False
+        return True
 
     def extend_transcript_selection(self, movement: str) -> None:
         buffer = self.transcript_field.buffer
@@ -472,6 +500,11 @@ class NoteDeskTUI:
 
         @kb.add("escape")
         def _cancel(event) -> None:
+            if event.current_buffer is self.transcript_field.buffer:
+                event.app.layout.focus(self.input_field)
+                self.set_status("Input focused")
+                event.app.invalidate()
+                return
             self.handle_cancel()
             event.app.invalidate()
 
@@ -481,14 +514,23 @@ class NoteDeskTUI:
             event.app.invalidate()
 
         @kb.add("c-c")
+        @kb.add("<sigint>")
         def _ctrl_c(event) -> None:
             if event.current_buffer is self.transcript_field.buffer:
                 copied = self.copy_transcript_selection()
                 if copied is not None:
                     event.app.clipboard.set_data(copied)
-                    self.set_status(f"Copied {len(copied.text)} chars")
+                    if self.copy_to_system_clipboard(copied.text):
+                        self.set_status(f"Copied {len(copied.text)} chars")
+                    else:
+                        self.set_status("Copied to session clipboard")
+                    event.app.layout.focus(self.input_field)
                     event.app.invalidate()
                     return
+                event.app.layout.focus(self.input_field)
+                self.set_status("Input focused")
+                event.app.invalidate()
+                return
             outcome = self.handle_ctrl_c()
             if outcome == "request_exit":
                 event.app.exit()

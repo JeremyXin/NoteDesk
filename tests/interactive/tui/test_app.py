@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from prompt_toolkit.application import Application
@@ -246,6 +247,61 @@ def test_tui_extends_transcript_selection_with_directional_movement(
 
     assert copied is not None
     assert copied.text == "se"
+
+
+def test_tui_copies_selection_to_system_clipboard(tmp_path: Path, monkeypatch) -> None:
+    app = NoteDeskTUI(
+        workspace=tmp_path,
+        artifact_root=tmp_path / "artifacts",
+    )
+    calls: list[tuple[list[str], str]] = []
+
+    monkeypatch.setattr(
+        "notedesk.interactive.tui.app.shutil.which",
+        lambda command: "/usr/bin/pbcopy" if command == "pbcopy" else None,
+    )
+    monkeypatch.setattr(
+        "notedesk.interactive.tui.app.subprocess.run",
+        lambda command, *, input, text, check: calls.append((command, input)),
+    )
+
+    assert app.copy_to_system_clipboard("copy this") is True
+    assert calls == [(["pbcopy"], "copy this")]
+
+
+def test_tui_sigint_copies_transcript_selection(tmp_path: Path) -> None:
+    async def scenario() -> tuple[list[str], str, bool]:
+        with create_pipe_input() as pipe_input:
+            app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+            application = app.build_application(
+                input=pipe_input,
+                output=DummyOutput(),
+            )
+            app.append_transcript("copy this")
+            application.layout.current_control = app.transcript_field.control
+            app.transcript_field.buffer.cursor_position = 0
+            app.transcript_field.buffer.start_selection()
+            app.transcript_field.buffer.cursor_position = len("copy this")
+            copied: list[str] = []
+            app.copy_to_system_clipboard = lambda text: copied.append(text) or True
+
+            run_task = asyncio.create_task(application.run_async())
+            await asyncio.sleep(0.01)
+            application.key_processor.send_sigint()
+            await asyncio.sleep(0.01)
+            application.exit()
+            await run_task
+            return (
+                copied,
+                app.status_text,
+                application.layout.current_control is app.input_field.control,
+            )
+
+    copied, status, input_focused = asyncio.run(scenario())
+
+    assert copied == ["copy this"]
+    assert status == "Copied 9 chars"
+    assert input_focused is True
 
 
 def test_tui_keeps_welcome_panel_after_conversation_starts(tmp_path: Path) -> None:
