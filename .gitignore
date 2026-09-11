@@ -223,6 +223,7 @@ __pycache__/
 
 # Local agent instructions
 /AGENTS.md
+/.claude/
 
 # Local NoteDesk artifacts
 .doc/
