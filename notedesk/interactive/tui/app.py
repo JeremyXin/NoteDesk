@@ -228,20 +228,66 @@ class NoteDeskTUI:
             return None
         return self.transcript_field.buffer.copy_selection()
 
-    def copy_to_system_clipboard(self, text: str) -> bool:
-        if sys.platform == "darwin":
-            commands = [["pbcopy"]]
-        elif sys.platform == "win32":
-            commands = [["clip.exe"]]
-        else:
-            commands = [
-                ["wl-copy"],
-                ["xclip", "-selection", "clipboard"],
-                ["xsel", "--clipboard", "--input"],
+    def _system_clipboard_commands(self, operation: str) -> list[list[str]]:
+        if operation == "read":
+            if sys.platform == "darwin":
+                return [["pbpaste"]]
+            if sys.platform == "win32":
+                return [
+                    [
+                        "powershell.exe",
+                        "-NoProfile",
+                        "-Command",
+                        "Get-Clipboard",
+                    ],
+                    ["Get-Clipboard"],
+                ]
+            return [
+                ["wl-paste", "--no-newline"],
+                ["xclip", "-selection", "clipboard", "-o"],
+                ["xsel", "--clipboard", "--output"],
             ]
 
+        if sys.platform == "darwin":
+            return [["pbcopy"]]
+        if sys.platform == "win32":
+            return [["clip.exe"]]
+        return [
+            ["wl-copy"],
+            ["xclip", "-selection", "clipboard"],
+            ["xsel", "--clipboard", "--input"],
+        ]
+
+    def read_from_system_clipboard(self) -> str | None:
         command = next(
-            (candidate for candidate in commands if shutil.which(candidate[0])),
+            (
+                candidate
+                for candidate in self._system_clipboard_commands("read")
+                if shutil.which(candidate[0])
+            ),
+            None,
+        )
+        if command is None:
+            return None
+
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            return None
+        return result.stdout
+
+    def copy_to_system_clipboard(self, text: str) -> bool:
+        command = next(
+            (
+                candidate
+                for candidate in self._system_clipboard_commands("write")
+                if shutil.which(candidate[0])
+            ),
             None,
         )
         if command is None:

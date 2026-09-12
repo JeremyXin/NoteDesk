@@ -269,6 +269,59 @@ def test_tui_copies_selection_to_system_clipboard(tmp_path: Path, monkeypatch) -
     assert calls == [(["pbcopy"], "copy this")]
 
 
+def test_tui_reads_from_macos_system_clipboard(
+    tmp_path: Path, monkeypatch
+) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr("notedesk.interactive.tui.app.sys.platform", "darwin")
+    monkeypatch.setattr(
+        "notedesk.interactive.tui.app.shutil.which",
+        lambda command: "/usr/bin/pbpaste" if command == "pbpaste" else None,
+    )
+    monkeypatch.setattr(
+        "notedesk.interactive.tui.app.subprocess.run",
+        lambda command, *, capture_output, text, check: calls.append(command)
+        or type("Result", (), {"stdout": "pasted text\n"})(),
+    )
+
+    assert app.read_from_system_clipboard() == "pasted text\n"
+    assert calls == [["pbpaste"]]
+
+
+def test_tui_reads_from_linux_system_clipboard_fallback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr("notedesk.interactive.tui.app.sys.platform", "linux")
+    monkeypatch.setattr(
+        "notedesk.interactive.tui.app.shutil.which",
+        lambda command: "/usr/bin/xclip" if command == "xclip" else None,
+    )
+    monkeypatch.setattr(
+        "notedesk.interactive.tui.app.subprocess.run",
+        lambda command, *, capture_output, text, check: calls.append(command)
+        or type("Result", (), {"stdout": "clipboard content"})(),
+    )
+
+    assert app.read_from_system_clipboard() == "clipboard content"
+    assert calls == [["xclip", "-selection", "clipboard", "-o"]]
+
+
+def test_tui_returns_none_when_system_clipboard_is_unavailable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+
+    monkeypatch.setattr("notedesk.interactive.tui.app.sys.platform", "linux")
+    monkeypatch.setattr("notedesk.interactive.tui.app.shutil.which", lambda _: None)
+
+    assert app.read_from_system_clipboard() is None
+
+
 def test_tui_sigint_copies_transcript_selection(tmp_path: Path) -> None:
     async def scenario() -> tuple[list[str], str, bool]:
         with create_pipe_input() as pipe_input:
