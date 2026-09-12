@@ -322,6 +322,29 @@ def test_tui_returns_none_when_system_clipboard_is_unavailable(
     assert app.read_from_system_clipboard() is None
 
 
+def test_tui_pastes_system_clipboard_into_prompt(tmp_path: Path, monkeypatch) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.input_field.text = "before: "
+    app.input_field.buffer.cursor_position = len(app.input_field.text)
+    monkeypatch.setattr(
+        app,
+        "read_from_system_clipboard",
+        lambda: "line one\r\nline two",
+    )
+
+    assert app.paste_from_system_clipboard() is True
+    assert app.input_field.text == "before: line one\nline two"
+    assert app.input_field.buffer.cursor_position == len(app.input_field.text)
+
+
+def test_tui_registers_ctrl_v_paste_binding(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+
+    bindings = app._build_key_bindings().bindings
+
+    assert any(str(binding.keys[0]) == "Keys.ControlV" for binding in bindings)
+
+
 def test_tui_sigint_copies_transcript_selection(tmp_path: Path) -> None:
     async def scenario() -> tuple[list[str], str, bool]:
         with create_pipe_input() as pipe_input:

@@ -281,6 +281,22 @@ class NoteDeskTUI:
             return None
         return result.stdout
 
+    def paste_from_system_clipboard(self) -> bool:
+        text = self.read_from_system_clipboard()
+        if text is None:
+            return False
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        buffer = self.input_field.buffer
+        before = buffer.document.text_before_cursor
+        after = buffer.document.text_after_cursor
+        buffer.set_document(
+            Document(
+                f"{before}{normalized}{after}",
+                cursor_position=len(before) + len(normalized),
+            )
+        )
+        return True
+
     def copy_to_system_clipboard(self, text: str) -> bool:
         command = next(
             (
@@ -580,6 +596,15 @@ class NoteDeskTUI:
             outcome = self.handle_ctrl_c()
             if outcome == "request_exit":
                 event.app.exit()
+            event.app.invalidate()
+
+        @kb.add("c-v")
+        def _paste(event) -> None:
+            event.app.layout.focus(self.input_field)
+            if self.paste_from_system_clipboard():
+                self.set_status("Pasted from system clipboard")
+            else:
+                self.set_status("System clipboard unavailable")
             event.app.invalidate()
 
         @kb.add("c-y")
