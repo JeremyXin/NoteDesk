@@ -408,6 +408,35 @@ def test_tui_scroll_transcript_moves_cursor_through_history(tmp_path: Path) -> N
     assert app.transcript_field.buffer.cursor_position < end_position
 
 
+def test_tui_preserves_transcript_view_when_new_text_arrives_after_scroll(
+    tmp_path: Path,
+) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.append_transcript("\n".join(f"line {index}" for index in range(20)))
+
+    app.scroll_transcript(-3)
+    scrolled_position = app.transcript_field.window.vertical_scroll
+    app.append_transcript("new line")
+
+    assert app.transcript_field.window.vertical_scroll == scrolled_position
+
+
+def test_tui_preserves_transcript_selection_when_new_text_arrives(
+    tmp_path: Path,
+) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.append_transcript("copy this text")
+    app.transcript_field.buffer.cursor_position = 0
+    app.transcript_field.buffer.start_selection()
+    app.transcript_field.buffer.cursor_position = len("copy this")
+
+    app.append_transcript("new line")
+
+    copied = app.copy_transcript_selection()
+    assert copied is not None
+    assert copied.text == "copy this"
+
+
 def test_tui_can_submit_and_clear_input(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,

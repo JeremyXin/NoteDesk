@@ -32,6 +32,7 @@ class NoteDeskTUI:
         self.task_drawer_open = False
         self.status_text = "Idle"
         self._transcript_line_boundary = False
+        self._transcript_follow_bottom = True
         self.on_submit: Callable[[str], None] = lambda text: None
         self.on_cancel: Callable[[], None] = lambda: None
         self.on_approve_permission: Callable[[], None] = lambda: None
@@ -216,8 +217,13 @@ class NoteDeskTUI:
     def scroll_transcript(self, lines: int) -> None:
         if lines < 0:
             self.transcript_field.buffer.cursor_up(-lines)
+            self._transcript_follow_bottom = False
         elif lines > 0:
             self.transcript_field.buffer.cursor_down(lines)
+            if self.transcript_field.buffer.cursor_position >= len(
+                self.transcript_field.text
+            ):
+                self._transcript_follow_bottom = True
         self.transcript_field.window.vertical_scroll = max(
             0,
             self.transcript_field.window.vertical_scroll + lines,
@@ -396,11 +402,20 @@ class NoteDeskTUI:
         self._transcript_line_boundary = False
 
     def _set_transcript_text(self, text: str) -> None:
-        self.transcript_field.buffer.set_document(
-            Document(text, cursor_position=len(text)),
+        buffer = self.transcript_field.buffer
+        selection_state = buffer.selection_state
+        preserve_view = not self._transcript_follow_bottom or selection_state is not None
+        cursor_position = (
+            min(buffer.cursor_position, len(text)) if preserve_view else len(text)
+        )
+        buffer.set_document(
+            Document(text, cursor_position=cursor_position),
             bypass_readonly=True,
         )
-        self.transcript_field.window.vertical_scroll = 10**9
+        if selection_state is not None:
+            buffer.selection_state = selection_state
+        if not preserve_view:
+            self.transcript_field.window.vertical_scroll = 10**9
 
     def set_status(self, status: str) -> None:
         self.status_text = status
