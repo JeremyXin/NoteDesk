@@ -3,6 +3,9 @@ from pathlib import Path
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.input.defaults import create_pipe_input
+from prompt_toolkit.input.vt100_parser import Vt100Parser
+from prompt_toolkit.key_binding.key_processor import KeyPress
+from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout import VerticalAlign, WindowAlign
 from prompt_toolkit.layout.containers import ConditionalContainer, HSplit, VSplit
 from prompt_toolkit.output import DummyOutput
@@ -11,6 +14,40 @@ from notedesk.agent.events import PermissionRequestEvent
 from notedesk.artifacts.models import ArtifactReceipt
 from notedesk.agent.middleware import TaskSnapshot, TaskSnapshotItem
 from notedesk.interactive.tui.app import NoteDeskTUI
+
+
+def _parsed_keys(sequence: str) -> list[KeyPress]:
+    parsed: list[KeyPress] = []
+    parser = Vt100Parser(parsed.append)
+    parser.feed(sequence)
+    return parsed
+
+
+def test_tui_parses_kitty_command_c_as_ctrl_c(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.register_kitty_keyboard_sequences()
+
+    parsed = _parsed_keys("\x1b[99;9u")
+
+    assert [key.key for key in parsed] == [Keys.ControlC]
+
+
+def test_tui_parses_kitty_command_v_as_ctrl_v(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.register_kitty_keyboard_sequences()
+
+    parsed = _parsed_keys("\x1b[118;9u")
+
+    assert [key.key for key in parsed] == [Keys.ControlV]
+
+
+def test_tui_parses_kitty_ctrl_shift_c_as_ctrl_c(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.register_kitty_keyboard_sequences()
+
+    parsed = _parsed_keys("\x1b[99;6u")
+
+    assert [key.key for key in parsed] == [Keys.ControlC]
 
 
 def test_tui_summary_includes_task_progress_and_artifact_dir(tmp_path: Path) -> None:

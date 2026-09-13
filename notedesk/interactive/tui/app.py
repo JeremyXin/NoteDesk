@@ -16,7 +16,9 @@ from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.filters import has_focus
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.input import vt100_parser
 from prompt_toolkit.styles import Style
+from prompt_toolkit.keys import Keys
 from prompt_toolkit.widgets import Frame, TextArea
 
 from notedesk.agent.events import PermissionRequestEvent
@@ -33,6 +35,7 @@ class NoteDeskTUI:
         self.status_text = "Idle"
         self._transcript_line_boundary = False
         self._transcript_follow_bottom = True
+        self.register_kitty_keyboard_sequences()
         self.on_submit: Callable[[str], None] = lambda text: None
         self.on_cancel: Callable[[], None] = lambda: None
         self.on_approve_permission: Callable[[], None] = lambda: None
@@ -62,6 +65,23 @@ class NoteDeskTUI:
             read_only=True,
             focusable=False,
         )
+
+    def register_kitty_keyboard_sequences(self) -> None:
+        """Map Kitty super-key sequences to prompt_toolkit key events.
+
+        Terminals that enable the Kitty keyboard protocol encode Cmd/Super
+        modifiers as CSI-u sequences. prompt_toolkit does not currently map
+        these sequences, so register only the clipboard shortcuts NoteDesk
+        handles. Legacy terminals continue to use their native Ctrl bindings.
+        """
+        vt100_parser.ANSI_SEQUENCES.update(
+            {
+                "\x1b[99;6u": Keys.ControlC,
+                "\x1b[99;9u": Keys.ControlC,
+                "\x1b[118;9u": Keys.ControlV,
+            }
+        )
+        vt100_parser._IS_PREFIX_OF_LONGER_MATCH_CACHE.clear()
 
     def render_launch_summary(self) -> str:
         return (
