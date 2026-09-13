@@ -208,7 +208,16 @@ def launch_tui(settings: AppSettings, tui: NoteDeskTUI | None = None) -> None:
     tui.on_deny_permission = lambda: application.create_background_task(
         controller.deny_permission()
     )
-    application.run()
+    enable_kitty_keyboard = getattr(tui, "enable_kitty_keyboard", None)
+    disable_kitty_keyboard = getattr(tui, "disable_kitty_keyboard", None)
+    try:
+        if enable_kitty_keyboard is None:
+            application.run()
+        else:
+            application.run(pre_run=enable_kitty_keyboard)
+    finally:
+        if disable_kitty_keyboard is not None:
+            disable_kitty_keyboard(application.output)
 
 
 def _deepseek_key_source(settings: AppSettings) -> str:

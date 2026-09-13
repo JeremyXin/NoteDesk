@@ -52,6 +52,48 @@ def test_tui_parses_kitty_ctrl_shift_c_as_ctrl_c(tmp_path: Path) -> None:
     assert [key.key for key in parsed] == [Keys.ControlC]
 
 
+def test_tui_enables_kitty_keyboard_on_supported_terminal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    output = DummyOutput()
+    writes: list[str] = []
+    monkeypatch.setenv("TERM_PROGRAM", "iTerm.app")
+    output.write_raw = writes.append
+
+    assert app.enable_kitty_keyboard(output) is True
+    assert writes == ["\x1b[>1u\x1b[>4;2m"]
+
+
+def test_tui_skips_kitty_keyboard_on_unknown_terminal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    output = DummyOutput()
+    writes: list[str] = []
+    monkeypatch.delenv("TERM_PROGRAM", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    output.write_raw = writes.append
+
+    assert app.enable_kitty_keyboard(output) is False
+    assert writes == []
+
+
+def test_tui_disables_kitty_keyboard_after_run(
+    tmp_path: Path, monkeypatch
+) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    output = DummyOutput()
+    writes: list[str] = []
+    monkeypatch.setenv("TERM_PROGRAM", "iTerm.app")
+    output.write_raw = writes.append
+
+    app.enable_kitty_keyboard(output)
+    app.disable_kitty_keyboard(output)
+
+    assert writes == ["\x1b[>1u\x1b[>4;2m", "\x1b[>4m\x1b[<u"]
+
+
 def test_tui_summary_includes_task_progress_and_artifact_dir(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,

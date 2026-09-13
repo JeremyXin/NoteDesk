@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -37,6 +38,7 @@ class NoteDeskTUI:
         self.status_text = "Idle"
         self._transcript_line_boundary = False
         self._transcript_follow_bottom = True
+        self._kitty_keyboard_enabled = False
         self.register_kitty_keyboard_sequences()
         self.on_submit: Callable[[str], None] = lambda text: None
         self.on_cancel: Callable[[], None] = lambda: None
@@ -103,6 +105,35 @@ class NoteDeskTUI:
             }
         )
         vt100_parser._IS_PREFIX_OF_LONGER_MATCH_CACHE.clear()
+
+    def _supports_extended_keyboard(self) -> bool:
+        terminal = os.environ.get("TERM", "")
+        terminal_program = os.environ.get("TERM_PROGRAM", "")
+        return (
+            terminal_program in {"iTerm.app", "WezTerm", "ghostty"}
+            or "kitty" in terminal
+            or bool(os.environ.get("TMUX"))
+            or bool(os.environ.get("WT_SESSION"))
+        )
+
+    def enable_kitty_keyboard(self, output=None) -> bool:
+        if not self._supports_extended_keyboard():
+            return False
+        if output is None:
+            output = get_app().output
+        output.write_raw("\x1b[>1u\x1b[>4;2m")
+        output.flush()
+        self._kitty_keyboard_enabled = True
+        return True
+
+    def disable_kitty_keyboard(self, output=None) -> None:
+        if not self._kitty_keyboard_enabled:
+            return
+        if output is None:
+            output = get_app().output
+        output.write_raw("\x1b[>4m\x1b[<u")
+        output.flush()
+        self._kitty_keyboard_enabled = False
 
     def render_launch_summary(self) -> str:
         return (
