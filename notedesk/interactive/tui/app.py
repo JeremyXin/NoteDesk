@@ -634,17 +634,17 @@ class NoteDeskTUI:
         @kb.add("c-c")
         @kb.add("<sigint>")
         def _ctrl_c(event) -> None:
+            copied = self.copy_transcript_selection()
+            if copied is not None:
+                event.app.clipboard.set_data(copied)
+                if self.copy_to_system_clipboard(copied.text):
+                    self.set_status(f"Copied {len(copied.text)} chars")
+                else:
+                    self.set_status("Copied to session clipboard")
+                event.app.layout.focus(self.input_field)
+                event.app.invalidate()
+                return
             if event.current_buffer is self.transcript_field.buffer:
-                copied = self.copy_transcript_selection()
-                if copied is not None:
-                    event.app.clipboard.set_data(copied)
-                    if self.copy_to_system_clipboard(copied.text):
-                        self.set_status(f"Copied {len(copied.text)} chars")
-                    else:
-                        self.set_status("Copied to session clipboard")
-                    event.app.layout.focus(self.input_field)
-                    event.app.invalidate()
-                    return
                 event.app.layout.focus(self.input_field)
                 self.set_status("Input focused")
                 event.app.invalidate()

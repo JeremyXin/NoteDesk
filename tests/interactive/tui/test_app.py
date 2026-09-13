@@ -467,6 +467,37 @@ def test_tui_sigint_copies_transcript_selection(tmp_path: Path) -> None:
     assert input_focused is True
 
 
+def test_tui_sigint_copies_selection_while_prompt_has_focus(tmp_path: Path) -> None:
+    async def scenario() -> tuple[list[str], str, str]:
+        with create_pipe_input() as pipe_input:
+            app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+            application = app.build_application(
+                input=pipe_input,
+                output=DummyOutput(),
+            )
+            app.append_transcript("copy this")
+            app.transcript_field.buffer.cursor_position = 0
+            app.transcript_field.buffer.start_selection()
+            app.transcript_field.buffer.cursor_position = len("copy this")
+            app.input_field.text = "draft"
+            copied: list[str] = []
+            app.copy_to_system_clipboard = lambda text: copied.append(text) or True
+
+            run_task = asyncio.create_task(application.run_async())
+            await asyncio.sleep(0.01)
+            application.key_processor.send_sigint()
+            await asyncio.sleep(0.01)
+            application.exit()
+            await run_task
+            return copied, app.status_text, app.input_field.text
+
+    copied, status, prompt_text = asyncio.run(scenario())
+
+    assert copied == ["copy this"]
+    assert status == "Copied 9 chars"
+    assert prompt_text == "draft"
+
+
 def test_tui_keeps_welcome_panel_after_conversation_starts(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,
