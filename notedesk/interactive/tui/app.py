@@ -77,7 +77,13 @@ class NoteDeskTUI:
         def mouse_handler(mouse_event: MouseEvent):
             if mouse_event.event_type == MouseEventType.MOUSE_DOWN:
                 get_app().layout.current_control = control
-            return original_mouse_handler(mouse_event)
+            result = original_mouse_handler(mouse_event)
+            if (
+                mouse_event.event_type == MouseEventType.MOUSE_UP
+                and control.buffer.selection_state is None
+            ):
+                get_app().layout.focus(self.input_field)
+            return result
 
         control.mouse_handler = mouse_handler
 

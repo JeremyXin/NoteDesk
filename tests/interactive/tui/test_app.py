@@ -275,6 +275,32 @@ def test_tui_mouse_drag_focuses_transcript_from_input_focus(tmp_path: Path) -> N
     assert application.layout.current_control is control
 
 
+def test_tui_mouse_click_returns_focus_to_prompt(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    application = app.build_application()
+
+    with set_app(application):
+        control = app.transcript_field.control
+        control.mouse_handler(
+            MouseEvent(
+                Point(x=0, y=0),
+                MouseEventType.MOUSE_DOWN,
+                MouseButton.LEFT,
+                frozenset(),
+            )
+        )
+        control.mouse_handler(
+            MouseEvent(
+                Point(x=0, y=0),
+                MouseEventType.MOUSE_UP,
+                MouseButton.LEFT,
+                frozenset(),
+            )
+        )
+
+    assert application.layout.current_control is app.input_field.control
+
+
 def test_tui_copies_transcript_selection(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,
