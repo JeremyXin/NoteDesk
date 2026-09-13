@@ -7,12 +7,14 @@ from pathlib import Path
 from typing import Callable
 
 from prompt_toolkit.application import Application
+from prompt_toolkit.application.current import get_app
 from prompt_toolkit.document import Document
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, VSplit, VerticalAlign, WindowAlign
 from prompt_toolkit.layout.containers import ConditionalContainer, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
+from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.filters import has_focus
 from prompt_toolkit.history import InMemoryHistory
@@ -65,6 +67,19 @@ class NoteDeskTUI:
             read_only=True,
             focusable=False,
         )
+        self._enable_transcript_mouse_selection()
+
+    def _enable_transcript_mouse_selection(self) -> None:
+        """Focus the transcript before prompt_toolkit handles a drag start."""
+        control = self.transcript_field.control
+        original_mouse_handler = control.mouse_handler
+
+        def mouse_handler(mouse_event: MouseEvent):
+            if mouse_event.event_type == MouseEventType.MOUSE_DOWN:
+                get_app().layout.current_control = control
+            return original_mouse_handler(mouse_event)
+
+        control.mouse_handler = mouse_handler
 
     def register_kitty_keyboard_sequences(self) -> None:
         """Map Kitty super-key sequences to prompt_toolkit key events.

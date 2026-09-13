@@ -2,10 +2,12 @@ import asyncio
 from pathlib import Path
 
 from prompt_toolkit.application import Application
+from prompt_toolkit.application.current import set_app
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.input.vt100_parser import Vt100Parser
 from prompt_toolkit.key_binding.key_processor import KeyPress
 from prompt_toolkit.keys import Keys
+from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType, Point
 from prompt_toolkit.layout import VerticalAlign, WindowAlign
 from prompt_toolkit.layout.containers import ConditionalContainer, HSplit, VSplit
 from prompt_toolkit.output import DummyOutput
@@ -249,6 +251,28 @@ def test_tui_transcript_can_receive_focus_for_keyboard_selection(tmp_path: Path)
 
     assert app.transcript_field.control.is_focusable()
     assert app.transcript_field.control.focus_on_click()
+
+
+def test_tui_mouse_drag_focuses_transcript_from_input_focus(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    application = app.build_application()
+    app.append_transcript("copy this text")
+
+    with set_app(application):
+        control = app.transcript_field.control
+        control.mouse_handler(
+            MouseEvent(Point(x=0, y=0), MouseEventType.MOUSE_DOWN, MouseButton.LEFT, frozenset())
+        )
+        control.mouse_handler(
+            MouseEvent(
+                Point(x=9, y=0),
+                MouseEventType.MOUSE_MOVE,
+                MouseButton.LEFT,
+                frozenset(),
+            )
+        )
+
+    assert application.layout.current_control is control
 
 
 def test_tui_copies_transcript_selection(tmp_path: Path) -> None:
