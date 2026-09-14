@@ -30,6 +30,11 @@ from notedesk.artifacts.models import ArtifactReceipt
 from notedesk.interactive.tui.tasks import TaskViewModel
 
 
+# prompt_toolkit only accepts one-character custom keys. Keep Cmd+C separate
+# from Ctrl+C so clipboard shortcuts cannot trigger the exit fallback.
+COMMAND_C_KEY = "\ue000"
+
+
 class NoteDeskTUI:
     def __init__(self, workspace: Path, artifact_root: Path) -> None:
         self.workspace = workspace
@@ -100,10 +105,10 @@ class NoteDeskTUI:
         vt100_parser.ANSI_SEQUENCES.update(
             {
                 "\x1b[99;6u": Keys.ControlC,
-                "\x1b[99;9u": Keys.ControlC,
+                "\x1b[99;9u": COMMAND_C_KEY,
                 "\x1b[118;9u": Keys.ControlV,
                 "\x1b[27;6;99~": Keys.ControlC,
-                "\x1b[27;9;99~": Keys.ControlC,
+                "\x1b[27;9;99~": COMMAND_C_KEY,
                 "\x1b[27;9;118~": Keys.ControlV,
             }
         )
@@ -645,6 +650,18 @@ class NoteDeskTUI:
     def _build_key_bindings(self) -> KeyBindings:
         kb = KeyBindings()
 
+        def _copy_selection(event) -> bool:
+            copied = self.copy_transcript_selection()
+            if copied is None:
+                return False
+            event.app.clipboard.set_data(copied)
+            if self.copy_to_system_clipboard(copied.text):
+                self.set_status(f"Copied {len(copied.text)} chars")
+            else:
+                self.set_status("Copied to session clipboard")
+            event.app.layout.focus(self.input_field)
+            return True
+
         @kb.add("enter", filter=has_focus(self.input_field))
         def _submit(event) -> None:
             self.handle_submit()
@@ -665,17 +682,15 @@ class NoteDeskTUI:
             self.handle_insert_newline()
             event.app.invalidate()
 
+        @kb.add(COMMAND_C_KEY)
+        def _command_c(event) -> None:
+            _copy_selection(event)
+            event.app.invalidate()
+
         @kb.add("c-c")
         @kb.add("<sigint>")
         def _ctrl_c(event) -> None:
-            copied = self.copy_transcript_selection()
-            if copied is not None:
-                event.app.clipboard.set_data(copied)
-                if self.copy_to_system_clipboard(copied.text):
-                    self.set_status(f"Copied {len(copied.text)} chars")
-                else:
-                    self.set_status("Copied to session clipboard")
-                event.app.layout.focus(self.input_field)
+            if _copy_selection(event):
                 event.app.invalidate()
                 return
             if event.current_buffer is self.transcript_field.buffer:

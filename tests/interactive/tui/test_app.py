@@ -15,7 +15,7 @@ from prompt_toolkit.output import DummyOutput
 from notedesk.agent.events import PermissionRequestEvent
 from notedesk.artifacts.models import ArtifactReceipt
 from notedesk.agent.middleware import TaskSnapshot, TaskSnapshotItem
-from notedesk.interactive.tui.app import NoteDeskTUI
+from notedesk.interactive.tui.app import COMMAND_C_KEY, NoteDeskTUI
 
 
 def _parsed_keys(sequence: str) -> list[KeyPress]:
@@ -25,13 +25,13 @@ def _parsed_keys(sequence: str) -> list[KeyPress]:
     return parsed
 
 
-def test_tui_parses_kitty_command_c_as_ctrl_c(tmp_path: Path) -> None:
+def test_tui_parses_kitty_command_c_as_copy_key(tmp_path: Path) -> None:
     app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
     app.register_kitty_keyboard_sequences()
 
     parsed = _parsed_keys("\x1b[99;9u")
 
-    assert [key.key for key in parsed] == [Keys.ControlC]
+    assert [key.key for key in parsed] == [COMMAND_C_KEY]
 
 
 def test_tui_parses_kitty_command_v_as_ctrl_v(tmp_path: Path) -> None:
@@ -52,13 +52,13 @@ def test_tui_parses_kitty_ctrl_shift_c_as_ctrl_c(tmp_path: Path) -> None:
     assert [key.key for key in parsed] == [Keys.ControlC]
 
 
-def test_tui_parses_xterm_command_c_as_ctrl_c(tmp_path: Path) -> None:
+def test_tui_parses_xterm_command_c_as_copy_key(tmp_path: Path) -> None:
     app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
     app.register_kitty_keyboard_sequences()
 
     parsed = _parsed_keys("\x1b[27;9;99~")
 
-    assert [key.key for key in parsed] == [Keys.ControlC]
+    assert [key.key for key in parsed] == [COMMAND_C_KEY]
 
 
 def test_tui_parses_xterm_command_v_as_ctrl_v(tmp_path: Path) -> None:
@@ -556,6 +556,66 @@ def test_tui_sigint_copies_selection_while_prompt_has_focus(tmp_path: Path) -> N
     assert copied == ["copy this"]
     assert status == "Copied 9 chars"
     assert prompt_text == "draft"
+
+
+def test_tui_command_c_does_not_exit_without_transcript_selection(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> bool:
+        with create_pipe_input() as pipe_input:
+            app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+            application = app.build_application(
+                input=pipe_input,
+                output=DummyOutput(),
+            )
+
+            run_task = asyncio.create_task(application.run_async())
+            await asyncio.sleep(0.01)
+            application.key_processor.feed(KeyPress(COMMAND_C_KEY))
+            application.key_processor.process_keys()
+            await asyncio.sleep(0.01)
+            still_running = not run_task.done()
+            application.exit()
+            await run_task
+            return still_running
+
+    assert asyncio.run(scenario()) is True
+
+
+def test_tui_command_c_does_not_exit_after_copying_selection(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> tuple[list[str], bool]:
+        with create_pipe_input() as pipe_input:
+            app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+            application = app.build_application(
+                input=pipe_input,
+                output=DummyOutput(),
+            )
+            app.append_transcript("copy this")
+            app.transcript_field.buffer.cursor_position = 0
+            app.transcript_field.buffer.start_selection()
+            app.transcript_field.buffer.cursor_position = len("copy this")
+            copied: list[str] = []
+            app.copy_to_system_clipboard = lambda text: copied.append(text) or True
+
+            run_task = asyncio.create_task(application.run_async())
+            await asyncio.sleep(0.01)
+            application.key_processor.feed(KeyPress(COMMAND_C_KEY))
+            application.key_processor.process_keys()
+            await asyncio.sleep(0.01)
+            application.key_processor.feed(KeyPress(COMMAND_C_KEY))
+            application.key_processor.process_keys()
+            await asyncio.sleep(0.01)
+            still_running = not run_task.done()
+            application.exit()
+            await run_task
+            return copied, still_running
+
+    copied, still_running = asyncio.run(scenario())
+
+    assert copied == ["copy this"]
+    assert still_running is True
 
 
 def test_tui_keeps_welcome_panel_after_conversation_starts(tmp_path: Path) -> None:
