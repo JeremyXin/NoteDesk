@@ -798,7 +798,36 @@ def test_tui_ctrl_c_requests_exit_when_input_is_empty(tmp_path: Path) -> None:
         application = app.build_application(input=pipe_input, output=DummyOutput())
         app.input_field.text = ""
 
-        outcome = app.handle_ctrl_c()
+        first = app.handle_ctrl_c()
+        second = app.handle_ctrl_c()
 
-        assert outcome == "request_exit"
+        assert first == "awaiting_exit"
+        assert second == "request_exit"
         assert application is not None
+
+
+def test_tui_ctrl_c_requires_two_presses_to_exit(tmp_path: Path) -> None:
+    async def scenario() -> tuple[bool, bool]:
+        with create_pipe_input() as pipe_input:
+            app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+            application = app.build_application(
+                input=pipe_input,
+                output=DummyOutput(),
+            )
+            run_task = asyncio.create_task(application.run_async())
+            await asyncio.sleep(0.01)
+
+            application.key_processor.send_sigint()
+            await asyncio.sleep(0.01)
+            running_after_first = not run_task.done()
+
+            application.key_processor.send_sigint()
+            await asyncio.sleep(0.01)
+            exited_after_second = run_task.done()
+            await run_task
+            return running_after_first, exited_after_second
+
+    running_after_first, exited_after_second = asyncio.run(scenario())
+
+    assert running_after_first is True
+    assert exited_after_second is True

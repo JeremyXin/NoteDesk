@@ -44,6 +44,7 @@ class NoteDeskTUI:
         self._transcript_line_boundary = False
         self._transcript_follow_bottom = True
         self._kitty_keyboard_enabled = False
+        self._ctrl_c_exit_pending = False
         self.register_kitty_keyboard_sequences()
         self.on_submit: Callable[[str], None] = lambda text: None
         self.on_cancel: Callable[[], None] = lambda: None
@@ -617,9 +618,15 @@ class NoteDeskTUI:
 
     def handle_ctrl_c(self) -> str:
         if self.input_field.text:
+            self._ctrl_c_exit_pending = True
             self.input_field.text = ""
             self.set_status("Input cleared")
             return "cleared_input"
+        if not self._ctrl_c_exit_pending:
+            self._ctrl_c_exit_pending = True
+            self.set_status("Press Ctrl-C again to exit")
+            return "awaiting_exit"
+        self._ctrl_c_exit_pending = False
         self.set_status("Exit requested")
         return "request_exit"
 
