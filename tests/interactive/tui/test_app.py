@@ -52,6 +52,24 @@ def test_tui_parses_kitty_ctrl_shift_c_as_ctrl_c(tmp_path: Path) -> None:
     assert [key.key for key in parsed] == [Keys.ControlC]
 
 
+def test_tui_parses_xterm_command_c_as_ctrl_c(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.register_kitty_keyboard_sequences()
+
+    parsed = _parsed_keys("\x1b[27;9;99~")
+
+    assert [key.key for key in parsed] == [Keys.ControlC]
+
+
+def test_tui_parses_xterm_command_v_as_ctrl_v(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.register_kitty_keyboard_sequences()
+
+    parsed = _parsed_keys("\x1b[27;9;118~")
+
+    assert [key.key for key in parsed] == [Keys.ControlV]
+
+
 def test_tui_enables_kitty_keyboard_on_supported_terminal(
     tmp_path: Path, monkeypatch
 ) -> None:

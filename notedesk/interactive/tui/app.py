@@ -102,6 +102,9 @@ class NoteDeskTUI:
                 "\x1b[99;6u": Keys.ControlC,
                 "\x1b[99;9u": Keys.ControlC,
                 "\x1b[118;9u": Keys.ControlV,
+                "\x1b[27;6;99~": Keys.ControlC,
+                "\x1b[27;9;99~": Keys.ControlC,
+                "\x1b[27;9;118~": Keys.ControlV,
             }
         )
         vt100_parser._IS_PREFIX_OF_LONGER_MATCH_CACHE.clear()
