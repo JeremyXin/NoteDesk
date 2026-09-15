@@ -1,0 +1,89 @@
+import asyncio
+from pathlib import Path
+
+from notedesk.agent.events import ReplyLifecycleEvent, TaskSnapshotEvent, TextDeltaEvent
+from notedesk.agent.middleware import TaskSnapshot, TaskSnapshotItem
+from notedesk.interactive.tui.app import NoteDeskTUI
+from tests.interactive.tui.harness import TUIHarness
+
+
+class AcceptanceRuntime:
+    def __init__(self) -> None:
+        self.ui_queue: asyncio.Queue = asyncio.Queue()
+        self.submitted: list[str] = []
+
+    async def run_once(self, prompt: str):
+        self.submitted.append(prompt)
+        await self.ui_queue.put(ReplyLifecycleEvent(phase="start", reply_id="r1"))
+        await self.ui_queue.put(
+            TaskSnapshotEvent(
+                snapshot=TaskSnapshot(
+                    tasks=[
+                        TaskSnapshotItem(
+                            id="task-1",
+                            subject="Collect tweets",
+                            description="Fetch timeline",
+                            state="in_progress",
+                            owner=None,
+                            metadata={},
+                        )
+                    ]
+                )
+            )
+        )
+        await self.ui_queue.put(TextDeltaEvent(delta="# Summary"))
+        await self.ui_queue.put(TextDeltaEvent(delta="\n\n- Done"))
+        await self.ui_queue.put(ReplyLifecycleEvent(phase="end", reply_id="r1"))
+        return None
+
+    async def resume_permission(self, approved: bool):
+        return None
+
+    async def deny_permission(self):
+        return None
+
+    async def cancel(self):
+        return None
+
+
+def test_tui_harness_drives_real_input_to_streamed_reply(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        runtime = AcceptanceRuntime()
+        harness = TUIHarness(NoteDeskTUI(tmp_path, tmp_path / "artifacts"), runtime)
+        await harness.start()
+        try:
+            await harness.type_text("Summarize this")
+            await harness.press("enter")
+            await harness.wait_until(lambda: runtime.submitted == ["Summarize this"])
+            await harness.wait_until(lambda: "# Summary" in harness.transcript())
+
+            assert "Summarize this" in harness.transcript()
+            assert "- Done" in harness.transcript()
+            assert "Collect tweets" in harness.tasks()
+            assert harness.status() == "Idle"
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())
+
+
+def test_tui_harness_timeout_includes_current_state(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        harness = TUIHarness(
+            NoteDeskTUI(tmp_path, tmp_path / "artifacts"),
+            AcceptanceRuntime(),
+        )
+        await harness.start()
+        try:
+            try:
+                await harness.wait_until(lambda: False, timeout=0.01)
+            except AssertionError as exc:
+                message = str(exc)
+                assert "Transcript:" in message
+                assert "Status:" in message
+            else:
+                raise AssertionError("wait_until should time out")
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())
