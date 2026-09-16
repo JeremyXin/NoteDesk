@@ -173,7 +173,7 @@ class NoteDeskTUI:
             ),
             filter=Condition(lambda: self.task_drawer_open),
         )
-        welcome_panel = Frame(
+        welcome_panel_content = Frame(
             body=VSplit(
                 [
                     HSplit(
@@ -254,6 +254,10 @@ class NoteDeskTUI:
             ),
             title="NoteDesk",
             height=Dimension(min=11, max=11, preferred=11),
+        )
+        welcome_panel = ConditionalContainer(
+            content=welcome_panel_content,
+            filter=Condition(lambda: not self.transcript_field.text),
         )
         main_content = HSplit(
             [

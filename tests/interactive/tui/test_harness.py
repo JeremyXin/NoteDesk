@@ -174,3 +174,30 @@ def test_tui_harness_pages_through_long_transcript_to_the_top(tmp_path: Path) ->
             await harness.stop()
 
     asyncio.run(scenario())
+
+
+def test_tui_harness_expands_transcript_after_conversation_starts(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+        harness = TUIHarness(tui, AcceptanceRuntime())
+        await harness.start()
+        try:
+            initial = tui.transcript_field.window.render_info
+            assert initial is not None
+            initial_height = initial.window_height
+
+            tui.append_transcript("\n".join(f"line {index}" for index in range(100)))
+
+            await harness.wait_until(
+                lambda: (
+                    tui.transcript_field.window.render_info is not None
+                    and tui.transcript_field.window.render_info.window_height
+                    > initial_height
+                )
+            )
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())

@@ -183,7 +183,9 @@ def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None
     root = application.layout.container
 
     assert isinstance(root, HSplit)
-    frame_body = root.children[0].children[0].children[1]
+    welcome = root.children[0].children[0]
+    assert isinstance(welcome, ConditionalContainer)
+    frame_body = welcome.content.children[1]
     welcome_layout = frame_body.children[1].get_container()
     assert isinstance(welcome_layout, VSplit)
     assert isinstance(welcome_layout.children[0], HSplit)
@@ -636,19 +638,17 @@ def test_tui_command_c_does_not_exit_after_copying_selection(
     assert still_running is True
 
 
-def test_tui_keeps_welcome_panel_after_conversation_starts(tmp_path: Path) -> None:
-    app = NoteDeskTUI(
-        workspace=tmp_path,
-        artifact_root=tmp_path / "artifacts",
-    )
+def test_tui_hides_welcome_panel_after_conversation_starts(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
     application = app.build_application()
+    welcome = application.layout.container.children[0].children[0]
+
+    assert isinstance(welcome, ConditionalContainer)
+    assert welcome.filter() is True
 
     app.append_transcript("You  > hello")
 
-    assert not isinstance(
-        application.layout.container.children[0].children[0],
-        ConditionalContainer,
-    )
+    assert welcome.filter() is False
 
 
 def test_tui_scroll_transcript_moves_cursor_through_history(tmp_path: Path) -> None:
