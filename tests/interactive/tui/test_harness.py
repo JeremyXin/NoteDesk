@@ -129,3 +129,22 @@ def test_tui_harness_decodes_xterm_shift_letters_as_prompt_text(tmp_path: Path) 
             await harness.stop()
 
     asyncio.run(scenario())
+
+
+def test_tui_harness_handles_xterm_shift_delete_as_backspace(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        harness = TUIHarness(
+            NoteDeskTUI(tmp_path, tmp_path / "artifacts"),
+            AcceptanceRuntime(),
+        )
+        await harness.start()
+        try:
+            await harness.type_text("AB")
+            await harness.send_terminal_sequence("\x1b[27;2;127~")
+
+            await harness.wait_until(lambda: harness.tui.input_field.text == "A")
+            assert "[27;2;127~" not in harness.tui.input_field.text
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())

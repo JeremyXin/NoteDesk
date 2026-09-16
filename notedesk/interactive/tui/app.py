@@ -112,6 +112,7 @@ class NoteDeskTUI:
         vt100_parser.ANSI_SEQUENCES.update(
             {
                 **shift_sequences,
+                "\x1b[27;2;127~": Keys.Backspace,
                 "\x1b[99;6u": Keys.ControlC,
                 "\x1b[99;9u": COMMAND_C_KEY,
                 "\x1b[118;9u": Keys.ControlV,

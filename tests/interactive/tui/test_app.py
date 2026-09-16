@@ -70,6 +70,15 @@ def test_tui_parses_xterm_shift_letter_as_plain_character(tmp_path: Path) -> Non
     assert [key.key for key in parsed] == [SHIFT_PRINTABLE_KEY]
 
 
+def test_tui_parses_xterm_shift_delete_as_backspace(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.register_kitty_keyboard_sequences()
+
+    parsed = _parsed_keys("\x1b[27;2;127~")
+
+    assert [key.key for key in parsed] == [Keys.Backspace]
+
+
 def test_tui_parses_xterm_command_v_as_ctrl_v(tmp_path: Path) -> None:
     app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
     app.register_kitty_keyboard_sequences()
