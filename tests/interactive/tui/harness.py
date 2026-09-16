@@ -16,8 +16,10 @@ class TUIHarness:
     """Drive the real TUI through deterministic terminal-like input."""
 
     _KEY_SEQUENCES = {
+        "ctrl-a": "\x01",
         "enter": "\r",
         "shift+enter": "\x1b\r",
+        "shift+end": "\x1b[1;2F",
         "escape": "\x1b",
         "ctrl-c": "\x03",
         "ctrl-n": "\x0e",
@@ -74,6 +76,10 @@ class TUIHarness:
             sequence = self._KEY_SEQUENCES[key]
         except KeyError as exc:
             raise ValueError(f"Unsupported harness key: {key}") from exc
+        self._pipe_input.send_text(sequence)
+        await asyncio.sleep(0)
+
+    async def send_terminal_sequence(self, sequence: str) -> None:
         self._pipe_input.send_text(sequence)
         await asyncio.sleep(0)
 

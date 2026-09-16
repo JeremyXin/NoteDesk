@@ -315,6 +315,11 @@ class NoteDeskTUI:
             return None
         return self.transcript_field.buffer.copy_selection()
 
+    def copy_input_selection(self):
+        if self.input_field.buffer.selection_state is None:
+            return None
+        return self.input_field.buffer.copy_selection()
+
     def _system_clipboard_commands(self, operation: str) -> list[list[str]]:
         if operation == "read":
             if sys.platform == "darwin":
@@ -659,6 +664,8 @@ class NoteDeskTUI:
 
         def _copy_selection(event) -> bool:
             copied = self.copy_transcript_selection()
+            if copied is None:
+                copied = self.copy_input_selection()
             if copied is None:
                 return False
             event.app.clipboard.set_data(copied)

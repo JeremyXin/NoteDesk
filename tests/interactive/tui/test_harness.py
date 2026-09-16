@@ -87,3 +87,26 @@ def test_tui_harness_timeout_includes_current_state(tmp_path: Path) -> None:
             await harness.stop()
 
     asyncio.run(scenario())
+
+
+def test_tui_harness_copies_selected_prompt_text_with_command_c(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        runtime = AcceptanceRuntime()
+        tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+        copied: list[str] = []
+        tui.copy_to_system_clipboard = lambda text: copied.append(text) or True
+        harness = TUIHarness(tui, runtime)
+        await harness.start()
+        try:
+            await harness.type_text("copy this prompt")
+            await harness.press("ctrl-a")
+            await harness.press("shift+end")
+            await harness.send_terminal_sequence("\x1b[27;9;99~")
+            await harness.wait_until(lambda: copied == ["copy this prompt"])
+
+            assert harness.tui.input_field.text == "copy this prompt"
+            assert harness.application.clipboard.get_data().text == "copy this prompt"
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())
