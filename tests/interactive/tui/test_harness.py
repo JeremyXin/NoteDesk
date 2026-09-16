@@ -148,3 +148,29 @@ def test_tui_harness_handles_xterm_shift_delete_as_backspace(tmp_path: Path) -> 
             await harness.stop()
 
     asyncio.run(scenario())
+
+
+def test_tui_harness_pages_through_long_transcript_to_the_top(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+        tui.append_transcript("\n".join(f"line {index}" for index in range(100)))
+        harness = TUIHarness(tui, AcceptanceRuntime())
+        await harness.start()
+        try:
+            initial = tui.transcript_field.window.render_info
+            assert initial is not None
+            assert initial.first_visible_line() > 0
+
+            for _ in range(10):
+                await harness.press("page-up")
+
+            await harness.wait_until(
+                lambda: (
+                    tui.transcript_field.window.render_info is not None
+                    and tui.transcript_field.window.render_info.first_visible_line() == 0
+                )
+            )
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())

@@ -26,6 +26,10 @@ class TUIHarness:
         "ctrl-t": "\x14",
         "ctrl-v": "\x16",
         "ctrl-y": "\x19",
+        "page-up": "\x1b[5~",
+        "page-down": "\x1b[6~",
+        "ctrl-u": "\x15",
+        "ctrl-d": "\x04",
     }
 
     def __init__(self, tui: NoteDeskTUI, runtime: Any) -> None:

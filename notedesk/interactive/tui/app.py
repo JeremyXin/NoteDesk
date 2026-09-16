@@ -318,6 +318,22 @@ class NoteDeskTUI:
             self.transcript_field.window.vertical_scroll + lines,
         )
 
+    def page_scroll_transcript(self, direction: int) -> None:
+        """Move the transcript by one visible page without changing its text."""
+        render_info = self.transcript_field.window.render_info
+        page_size = max(1, render_info.window_height - 1) if render_info else 10
+        self.scroll_transcript(direction * page_size)
+
+    def scroll_transcript_to_top(self) -> None:
+        self.transcript_field.buffer.cursor_position = 0
+        self.transcript_field.window.vertical_scroll = 0
+        self._transcript_follow_bottom = False
+
+    def scroll_transcript_to_bottom(self) -> None:
+        self.transcript_field.buffer.cursor_position = len(self.transcript_field.text)
+        self.transcript_field.window.vertical_scroll = 10**9
+        self._transcript_follow_bottom = True
+
     def copy_transcript_selection(self):
         if self.transcript_field.buffer.selection_state is None:
             return None
@@ -767,6 +783,28 @@ class NoteDeskTUI:
         @kb.add("<scroll-down>")
         def _scroll_down(event) -> None:
             self.scroll_transcript(3)
+            event.app.invalidate()
+
+        @kb.add("pageup")
+        @kb.add("c-u")
+        def _page_up(event) -> None:
+            self.page_scroll_transcript(-1)
+            event.app.invalidate()
+
+        @kb.add("pagedown")
+        @kb.add("c-d")
+        def _page_down(event) -> None:
+            self.page_scroll_transcript(1)
+            event.app.invalidate()
+
+        @kb.add("home", filter=has_focus(self.transcript_field))
+        def _transcript_home(event) -> None:
+            self.scroll_transcript_to_top()
+            event.app.invalidate()
+
+        @kb.add("end", filter=has_focus(self.transcript_field))
+        def _transcript_end(event) -> None:
+            self.scroll_transcript_to_bottom()
             event.app.invalidate()
 
         @kb.add("s-left", filter=has_focus(self.transcript_field))
