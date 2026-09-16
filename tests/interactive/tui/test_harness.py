@@ -110,3 +110,22 @@ def test_tui_harness_copies_selected_prompt_text_with_command_c(tmp_path: Path) 
             await harness.stop()
 
     asyncio.run(scenario())
+
+
+def test_tui_harness_decodes_xterm_shift_letters_as_prompt_text(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        harness = TUIHarness(
+            NoteDeskTUI(tmp_path, tmp_path / "artifacts"),
+            AcceptanceRuntime(),
+        )
+        await harness.start()
+        try:
+            for letter in "GDSQ":
+                await harness.send_terminal_sequence(f"\x1b[27;2;{ord(letter)}~")
+
+            await harness.wait_until(lambda: harness.tui.input_field.text == "GDSQ")
+            assert "[27;2;" not in harness.tui.input_field.text
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())

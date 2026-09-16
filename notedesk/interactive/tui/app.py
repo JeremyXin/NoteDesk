@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -33,6 +34,7 @@ from notedesk.interactive.tui.tasks import TaskViewModel
 # prompt_toolkit only accepts one-character custom keys. Keep Cmd+C separate
 # from Ctrl+C so clipboard shortcuts cannot trigger the exit fallback.
 COMMAND_C_KEY = "\ue000"
+SHIFT_PRINTABLE_KEY = "\ue001"
 
 
 class NoteDeskTUI:
@@ -103,8 +105,13 @@ class NoteDeskTUI:
         these sequences, so register only the clipboard shortcuts NoteDesk
         handles. Legacy terminals continue to use their native Ctrl bindings.
         """
+        shift_sequences = {
+            f"\x1b[27;2;{code}~": SHIFT_PRINTABLE_KEY
+            for code in range(ord(" "), ord("~") + 1)
+        }
         vt100_parser.ANSI_SEQUENCES.update(
             {
+                **shift_sequences,
                 "\x1b[99;6u": Keys.ControlC,
                 "\x1b[99;9u": COMMAND_C_KEY,
                 "\x1b[118;9u": Keys.ControlV,
@@ -699,6 +706,16 @@ class NoteDeskTUI:
         @kb.add(COMMAND_C_KEY)
         def _command_c(event) -> None:
             _copy_selection(event)
+            event.app.invalidate()
+
+        @kb.add(SHIFT_PRINTABLE_KEY, filter=has_focus(self.input_field))
+        def _shift_printable(event) -> None:
+            match = re.fullmatch(r"\x1b\[27;2;(\d+)~", event.data)
+            if match is None:
+                return
+            code = int(match.group(1))
+            if ord(" ") <= code <= ord("~"):
+                event.current_buffer.insert_text(chr(code))
             event.app.invalidate()
 
         @kb.add("c-c")

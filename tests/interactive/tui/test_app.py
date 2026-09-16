@@ -15,7 +15,7 @@ from prompt_toolkit.output import DummyOutput
 from notedesk.agent.events import PermissionRequestEvent
 from notedesk.artifacts.models import ArtifactReceipt
 from notedesk.agent.middleware import TaskSnapshot, TaskSnapshotItem
-from notedesk.interactive.tui.app import COMMAND_C_KEY, NoteDeskTUI
+from notedesk.interactive.tui.app import COMMAND_C_KEY, SHIFT_PRINTABLE_KEY, NoteDeskTUI
 
 
 def _parsed_keys(sequence: str) -> list[KeyPress]:
@@ -59,6 +59,15 @@ def test_tui_parses_xterm_command_c_as_copy_key(tmp_path: Path) -> None:
     parsed = _parsed_keys("\x1b[27;9;99~")
 
     assert [key.key for key in parsed] == [COMMAND_C_KEY]
+
+
+def test_tui_parses_xterm_shift_letter_as_plain_character(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.register_kitty_keyboard_sequences()
+
+    parsed = _parsed_keys("\x1b[27;2;66~")
+
+    assert [key.key for key in parsed] == [SHIFT_PRINTABLE_KEY]
 
 
 def test_tui_parses_xterm_command_v_as_ctrl_v(tmp_path: Path) -> None:
