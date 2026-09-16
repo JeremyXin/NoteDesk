@@ -9,7 +9,8 @@ from prompt_toolkit.key_binding.key_processor import KeyPress
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType, Point
 from prompt_toolkit.layout import VerticalAlign, WindowAlign
-from prompt_toolkit.layout.containers import ConditionalContainer, HSplit, VSplit
+from prompt_toolkit.layout.containers import HSplit, VSplit
+from prompt_toolkit.layout.scrollable_pane import ScrollablePane
 from prompt_toolkit.output import DummyOutput
 
 from notedesk.agent.events import PermissionRequestEvent
@@ -183,9 +184,10 @@ def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None
     root = application.layout.container
 
     assert isinstance(root, HSplit)
-    welcome = root.children[0].children[0]
-    assert isinstance(welcome, ConditionalContainer)
-    frame_body = welcome.content.children[1]
+    scroll_pane = root.children[0]
+    assert isinstance(scroll_pane, ScrollablePane)
+    welcome = scroll_pane.content.children[0]
+    frame_body = welcome.children[1]
     welcome_layout = frame_body.children[1].get_container()
     assert isinstance(welcome_layout, VSplit)
     assert isinstance(welcome_layout.children[0], HSplit)
@@ -202,6 +204,20 @@ def test_tui_welcome_area_uses_brand_and_runtime_columns(tmp_path: Path) -> None
     assert ".notedesk/artifacts" in app.render_welcome_runtime()
     assert "Tips for getting started" in app.render_welcome_tips_header()
     assert "permissions: confirm edits" in app.render_welcome_permissions()
+
+
+def test_tui_places_welcome_panel_inside_transcript_scroll_pane(
+    tmp_path: Path,
+) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    application = app.build_application()
+
+    root = application.layout.container
+    scroll_pane = root.children[0]
+
+    assert isinstance(scroll_pane, ScrollablePane)
+    assert scroll_pane.content.children[0] is not None
+    assert scroll_pane.content.children[1] is app.transcript_field.window
 
 
 def test_tui_welcome_panel_matches_cli_agent_style(tmp_path: Path) -> None:
@@ -638,17 +654,18 @@ def test_tui_command_c_does_not_exit_after_copying_selection(
     assert still_running is True
 
 
-def test_tui_hides_welcome_panel_after_conversation_starts(tmp_path: Path) -> None:
+def test_tui_keeps_welcome_panel_in_scroll_history_after_conversation_starts(
+    tmp_path: Path,
+) -> None:
     app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
     application = app.build_application()
-    welcome = application.layout.container.children[0].children[0]
-
-    assert isinstance(welcome, ConditionalContainer)
-    assert welcome.filter() is True
+    scroll_pane = application.layout.container.children[0]
+    assert isinstance(scroll_pane, ScrollablePane)
+    welcome = scroll_pane.content.children[0]
 
     app.append_transcript("You  > hello")
 
-    assert welcome.filter() is False
+    assert scroll_pane.content.children[0] is welcome
 
 
 def test_tui_scroll_transcript_moves_cursor_through_history(tmp_path: Path) -> None:

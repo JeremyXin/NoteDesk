@@ -16,6 +16,7 @@ from prompt_toolkit.layout import HSplit, Layout, VSplit, VerticalAlign, WindowA
 from prompt_toolkit.layout.containers import ConditionalContainer, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
+from prompt_toolkit.layout.scrollable_pane import ScrollablePane
 from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.filters import has_focus
@@ -47,6 +48,7 @@ class NoteDeskTUI:
         self._transcript_follow_bottom = True
         self._kitty_keyboard_enabled = False
         self._ctrl_c_exit_pending = False
+        self._transcript_scroll_pane: ScrollablePane | None = None
         self.register_kitty_keyboard_sequences()
         self.on_submit: Callable[[str], None] = lambda text: None
         self.on_cancel: Callable[[], None] = lambda: None
@@ -255,18 +257,21 @@ class NoteDeskTUI:
             title="NoteDesk",
             height=Dimension(min=11, max=11, preferred=11),
         )
-        welcome_panel = ConditionalContainer(
-            content=welcome_panel_content,
-            filter=Condition(lambda: not self.transcript_field.text),
-        )
         main_content = HSplit(
             [
-                welcome_panel,
+                welcome_panel_content,
                 self.transcript_field,
                 task_drawer,
             ],
-            height=Dimension(weight=1),
             align=VerticalAlign.TOP,
+        )
+        self._transcript_scroll_pane = ScrollablePane(
+            content=main_content,
+            keep_cursor_visible=False,
+            keep_focused_window_visible=False,
+            show_scrollbar=False,
+            display_arrows=False,
+            height=Dimension(weight=1),
         )
         bottom_dock = HSplit(
             [
@@ -282,7 +287,7 @@ class NoteDeskTUI:
             align=VerticalAlign.TOP,
         )
         root = HSplit(
-            [main_content, bottom_dock],
+            [self._transcript_scroll_pane, bottom_dock],
             align=VerticalAlign.JUSTIFY,
         )
         return Application(
@@ -307,7 +312,45 @@ class NoteDeskTUI:
     def toggle_task_drawer(self) -> None:
         self.task_drawer_open = not self.task_drawer_open
 
+    def _transcript_viewport_height(self) -> int:
+        try:
+            output = get_app().output
+            rows = output.get_size().rows
+            input_height = self.input_field.window.render_info.window_height
+            return max(1, rows - input_height - 3)
+        except (AttributeError, RuntimeError):
+            return 10
+
+    def _transcript_scroll_max(self) -> int:
+        if self._transcript_scroll_pane is None:
+            return 0
+        try:
+            application = get_app()
+            if not application.is_running:
+                return 0
+            output = application.output
+            width = output.get_size().columns
+            content_height = self._transcript_scroll_pane.content.preferred_height(
+                width,
+                self._transcript_scroll_pane.max_available_height,
+            ).preferred
+        except (AttributeError, RuntimeError):
+            return 0
+        return max(0, content_height - self._transcript_viewport_height())
+
     def scroll_transcript(self, lines: int) -> None:
+        if self._transcript_scroll_pane is not None:
+            scroll_max = self._transcript_scroll_max()
+            next_scroll = min(
+                scroll_max,
+                self._transcript_scroll_pane.vertical_scroll + lines,
+            )
+            self._transcript_scroll_pane.vertical_scroll = max(0, next_scroll)
+            if lines < 0:
+                self._transcript_follow_bottom = False
+            elif lines > 0 and next_scroll >= scroll_max:
+                self._transcript_follow_bottom = True
+            return
         if lines < 0:
             self.transcript_field.buffer.cursor_up(-lines)
             self._transcript_follow_bottom = False
@@ -326,14 +369,24 @@ class NoteDeskTUI:
         """Move the transcript by one visible page without changing its text."""
         render_info = self.transcript_field.window.render_info
         page_size = max(1, render_info.window_height - 1) if render_info else 10
+        if self._transcript_scroll_pane is not None:
+            page_size = max(1, self._transcript_viewport_height() - 1)
         self.scroll_transcript(direction * page_size)
 
     def scroll_transcript_to_top(self) -> None:
+        if self._transcript_scroll_pane is not None:
+            self._transcript_scroll_pane.vertical_scroll = 0
+            self._transcript_follow_bottom = False
+            return
         self.transcript_field.buffer.cursor_position = 0
         self.transcript_field.window.vertical_scroll = 0
         self._transcript_follow_bottom = False
 
     def scroll_transcript_to_bottom(self) -> None:
+        if self._transcript_scroll_pane is not None:
+            self._transcript_scroll_pane.vertical_scroll = self._transcript_scroll_max()
+            self._transcript_follow_bottom = True
+            return
         self.transcript_field.buffer.cursor_position = len(self.transcript_field.text)
         self.transcript_field.window.vertical_scroll = 10**9
         self._transcript_follow_bottom = True
@@ -529,7 +582,7 @@ class NoteDeskTUI:
         if selection_state is not None:
             buffer.selection_state = selection_state
         if not preserve_view:
-            self.transcript_field.window.vertical_scroll = 10**9
+            self.scroll_transcript_to_bottom()
 
     def set_status(self, status: str) -> None:
         self.status_text = status

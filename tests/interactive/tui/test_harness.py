@@ -153,21 +153,24 @@ def test_tui_harness_handles_xterm_shift_delete_as_backspace(tmp_path: Path) -> 
 def test_tui_harness_pages_through_long_transcript_to_the_top(tmp_path: Path) -> None:
     async def scenario() -> None:
         tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
-        tui.append_transcript("\n".join(f"line {index}" for index in range(100)))
         harness = TUIHarness(tui, AcceptanceRuntime())
         await harness.start()
         try:
-            initial = tui.transcript_field.window.render_info
-            assert initial is not None
-            assert initial.first_visible_line() > 0
+            tui.append_transcript("\n".join(f"line {index}" for index in range(100)))
+            await harness.wait_until(
+                lambda: (
+                    tui._transcript_scroll_pane is not None
+                    and tui._transcript_scroll_pane.vertical_scroll > 0
+                )
+            )
 
             for _ in range(10):
                 await harness.press("page-up")
 
             await harness.wait_until(
                 lambda: (
-                    tui.transcript_field.window.render_info is not None
-                    and tui.transcript_field.window.render_info.first_visible_line() == 0
+                    tui._transcript_scroll_pane is not None
+                    and tui._transcript_scroll_pane.vertical_scroll == 0
                 )
             )
         finally:
