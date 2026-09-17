@@ -6,7 +6,13 @@ from pathlib import Path
 from typing import Callable
 
 from agentscope.agent import Agent
-from agentscope.event import ConfirmResult, RequireUserConfirmEvent, UserConfirmResultEvent, UserInterruptEvent
+from agentscope.event import (
+    ConfirmResult,
+    ModelCallEndEvent,
+    RequireUserConfirmEvent,
+    UserConfirmResultEvent,
+    UserInterruptEvent,
+)
 from agentscope.message import Msg, TextBlock, UserMsg
 from agentscope.state import AgentState, Task
 
@@ -14,13 +20,20 @@ from notedesk.agent.events import map_agent_event
 from notedesk.agent.factory import build_agent_session
 from notedesk.agent.middleware import publish_task_snapshot
 from notedesk.artifacts.markdown import ArtifactValidationError, save_markdown_artifact
-from notedesk.artifacts.models import ArtifactReceipt
 from notedesk.config.models import AppSettings
 from notedesk.model.config import ModelRoleMap, NamedModelConfig, Provider
 
 
 class RuntimeFailure(RuntimeError):
     pass
+
+
+DEFAULT_MAX_OUTPUT_TOKENS = 32_000
+MAX_OUTPUT_TOKEN_CONTINUATIONS = 3
+OUTPUT_LIMIT_CONTINUATION_PROMPT = (
+    "Continue the previous answer directly from where it stopped. "
+    "Do not apologize, repeat earlier content, or add a preamble."
+)
 
 
 def build_default_role_map(settings: AppSettings) -> ModelRoleMap:
@@ -33,7 +46,7 @@ def build_default_role_map(settings: AppSettings) -> ModelRoleMap:
                 api_key_env=settings.deepseek.api_key_env,
                 base_url=settings.deepseek.base_url,
                 temperature=0.2,
-                max_tokens=1200,
+                max_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
                 retry=1,
                 context_size=32768,
             )
@@ -48,10 +61,12 @@ class AgentSessionRuntime:
         agent: Agent,
         ui_queue: asyncio.Queue,
         artifact_path: Path | None = None,
+        max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
     ) -> None:
         self.agent = agent
         self.ui_queue = ui_queue
         self.artifact_path = artifact_path
+        self.max_output_tokens = max_output_tokens
         self.pending_permission_event: RequireUserConfirmEvent | None = None
 
     async def run_once(self, prompt: str):
@@ -86,8 +101,14 @@ class AgentSessionRuntime:
             UserInterruptEvent(reply_id=pending.reply_id)
         )
 
-    async def _consume_reply_stream(self, input_event):
+    async def _consume_reply_stream(
+        self,
+        input_event,
+        accumulated_text: str = "",
+        continuation_count: int = 0,
+    ):
         final_msg: Msg | None = None
+        last_output_tokens = 0
 
         async for chunk in self.agent.reply_stream(
             input_event,
@@ -99,15 +120,32 @@ class AgentSessionRuntime:
             if mapped is not None:
                 await self.ui_queue.put(mapped)
             await publish_task_snapshot(self.ui_queue, self.agent.state)
+            if isinstance(chunk, ModelCallEndEvent):
+                last_output_tokens = chunk.output_tokens
             if isinstance(chunk, Msg):
                 final_msg = chunk
 
-        if self.artifact_path is None or final_msg is None:
+        if final_msg is None:
             return None
 
-        markdown = _extract_text(final_msg).strip()
+        markdown = _extract_text(final_msg)
         if not markdown:
             return None
+
+        if (
+            last_output_tokens >= self.max_output_tokens
+            and continuation_count < MAX_OUTPUT_TOKEN_CONTINUATIONS
+        ):
+            return await self._consume_reply_stream(
+                UserMsg(name="user", content=OUTPUT_LIMIT_CONTINUATION_PROMPT),
+                accumulated_text=f"{accumulated_text}{markdown}",
+                continuation_count=continuation_count + 1,
+            )
+
+        if self.artifact_path is None:
+            return None
+
+        markdown = f"{accumulated_text}{markdown}".strip()
 
         try:
             receipt = save_markdown_artifact(

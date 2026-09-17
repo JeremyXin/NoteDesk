@@ -187,10 +187,13 @@ def launch_tui(settings: AppSettings, tui: NoteDeskTUI | None = None) -> None:
     artifact_root = settings.artifacts.root
     artifact_root.mkdir(parents=True, exist_ok=True)
     artifact_path = artifact_root / "latest.md"
+    role_map = build_default_role_map(settings)
     runtime = AgentSessionRuntime(
-        agent=build_agent_session(settings, build_default_role_map(settings)),
+        agent=build_agent_session(settings, role_map),
         ui_queue=ui_queue,
         artifact_path=artifact_path,
+        max_output_tokens=role_map.resolve_role("agent").max_tokens
+        or 32_000,
     )
     tui = tui or NoteDeskTUI(
         workspace=settings.workspace,

@@ -1,12 +1,11 @@
 import asyncio
-from dataclasses import dataclass
 
 from agentscope.agent import Agent
 from agentscope.event import RequireUserConfirmEvent
 from agentscope.credential import DeepSeekCredential
 from agentscope.formatter import FormatterBase
-from agentscope.message import TextBlock, ToolCallBlock, UserMsg
-from agentscope.model import ChatModelBase, ChatResponse
+from agentscope.message import TextBlock, ToolCallBlock
+from agentscope.model import ChatModelBase, ChatResponse, ChatUsage
 
 from notedesk.agent.factory import build_session_toolkit
 from notedesk.agent.runtime import AgentSessionRuntime
@@ -68,6 +67,57 @@ def test_agent_session_runtime_runs_real_reply_stream_and_persists_artifact(tmp_
     kinds = [event.kind for event in emitted if hasattr(event, "kind")]
     assert "reply_lifecycle" in kinds
     assert "text_delta" in kinds
+
+
+def test_agent_session_runtime_continues_when_output_limit_is_reached(tmp_path) -> None:
+    queue: asyncio.Queue = asyncio.Queue()
+
+    class TruncatedThenCompletedModel(FakeStreamingModel):
+        async def _call_api(self, model_name, messages, tools=None, tool_choice=None, **kwargs):
+            self.calls += 1
+
+            async def _stream():
+                if self.calls == 1:
+                    yield ChatResponse(
+                        content=[TextBlock(text="# Partial")],
+                        is_last=True,
+                        usage=ChatUsage(
+                            input_tokens=10,
+                            output_tokens=32_000,
+                            time=0.1,
+                        ),
+                    )
+                    return
+                yield ChatResponse(
+                    content=[TextBlock(text="\n\n# Continued")],
+                    is_last=True,
+                    usage=ChatUsage(
+                        input_tokens=20,
+                        output_tokens=10,
+                        time=0.1,
+                    ),
+                )
+
+            return _stream()
+
+    model = TruncatedThenCompletedModel()
+    agent = Agent(
+        name="notedesk",
+        system_prompt="You are NoteDesk.",
+        model=model,
+        toolkit=build_session_toolkit(tmp_path, []),
+    )
+    runtime = AgentSessionRuntime(
+        agent=agent,
+        ui_queue=queue,
+        artifact_path=tmp_path / "reply.md",
+    )
+
+    receipt = asyncio.run(runtime.run_once("Write a long answer"))
+
+    assert model.calls == 2
+    assert receipt is not None
+    assert receipt.path.read_text() == "# Partial\n\n# Continued"
 
 
 def test_agent_session_runtime_skips_artifact_when_no_text_output(tmp_path) -> None:

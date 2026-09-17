@@ -86,7 +86,7 @@ def test_launch_tui_wires_runtime_controller_and_callbacks(
         cli_module, "build_agent_session", lambda settings, role_map: object()
     )
 
-    def _runtime_factory(agent, ui_queue, artifact_path):
+    def _runtime_factory(agent, ui_queue, artifact_path, max_output_tokens):
         runtime = FakeRuntime(agent=agent, ui_queue=ui_queue, artifact_path=artifact_path)
         captured["runtime"] = runtime
         return runtime
