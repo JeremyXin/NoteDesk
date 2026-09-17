@@ -1,7 +1,13 @@
 import asyncio
 from pathlib import Path
 
-from notedesk.agent.events import PermissionRequestEvent, ReplyLifecycleEvent, TaskSnapshotEvent, TextDeltaEvent
+from notedesk.agent.events import (
+    PermissionRequestEvent,
+    ReplyLifecycleEvent,
+    TaskSnapshotEvent,
+    TextDeltaEvent,
+    ToolLifecycleEvent,
+)
 from notedesk.agent.middleware import TaskSnapshot, TaskSnapshotItem
 from notedesk.artifacts.models import ArtifactReceipt
 from notedesk.interactive.tui.app import NoteDeskTUI
@@ -117,6 +123,43 @@ def test_tui_session_controller_renders_streaming_deltas_before_run_finishes(
         assert "NoteDesk > first second" in tui.transcript_field.text
 
     asyncio.run(scenario())
+
+
+def test_tui_session_controller_keeps_tool_lifecycle_out_of_transcript(
+    tmp_path: Path,
+) -> None:
+    tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    runtime = FakeRuntime()
+    controller = TUISessionController(tui, runtime)  # type: ignore[arg-type]
+
+    controller._apply_event(
+        ToolLifecycleEvent(
+            phase="call_start",
+            tool_name="Bash",
+            summary="Running tool",
+        )
+    )
+
+    assert tui.status_text == "Tool: Running tool"
+    assert "Tool: Running tool" not in tui.transcript_field.text
+
+
+def test_tui_session_controller_surfaces_max_iteration_end_reason(
+    tmp_path: Path,
+) -> None:
+    tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    runtime = FakeRuntime()
+    controller = TUISessionController(tui, runtime)  # type: ignore[arg-type]
+
+    controller._apply_event(
+        ReplyLifecycleEvent(
+            phase="end",
+            reply_id="r1",
+            finished_reason="exceed_max_iters",
+        )
+    )
+
+    assert tui.status_text == "Stopped: max iterations reached"
 
 
 def test_tui_session_controller_approves_permission_and_renders_receipt(tmp_path: Path) -> None:

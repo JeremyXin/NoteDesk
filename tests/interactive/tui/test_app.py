@@ -329,7 +329,7 @@ def test_tui_formats_user_turns_and_keeps_transcript_scrollable(tmp_path: Path) 
 
 
 def test_tui_visually_distinguishes_user_and_assistant_turns(tmp_path: Path) -> None:
-    async def render_transcript() -> tuple[list, list]:
+    async def render_transcript() -> tuple[list, list, list]:
         app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
         with create_pipe_input() as pipe_input:
             application = app.build_application(
@@ -340,14 +340,15 @@ def test_tui_visually_distinguishes_user_and_assistant_turns(tmp_path: Path) -> 
             app.append_transcript_delta("answer")
             with set_app(application):
                 content = app.transcript_field.control.create_content(80, 10)
-                return content.get_line(0), content.get_line(2)
+                return content.get_line(0), content.get_line(1), content.get_line(2)
 
-    user_line, assistant_line = asyncio.run(render_transcript())
+    user_line, separator_line, assistant_line = asyncio.run(render_transcript())
 
     assert any(
         "transcript.user" in style and "You  > hello" in text
         for style, text, *_ in user_line
     )
+    assert all("transcript.user" not in style for style, *_ in separator_line)
     assert assistant_line[0][0].find("transcript.assistant-label") >= 0
     assert assistant_line[0][1] == "NoteDesk > "
 
@@ -863,10 +864,33 @@ def test_tui_renders_permission_and_artifact_messages(tmp_path: Path) -> None:
         )
     )
 
-    assert "Permission required for tool action" in app.transcript_field.text
-    assert "Ctrl-Y approve · Ctrl-N deny" in app.transcript_field.text
+    assert "Permission required for tool action" in app.render_permission_panel()
+    assert "Ctrl-Y approve · Ctrl-N deny" in app.render_permission_panel()
+    assert "Permission required for tool action" not in app.transcript_field.text
     assert "summary.md" not in app.transcript_field.text
     assert app.status_text == "Artifact saved"
+    assert app.input_field.buffer.read_only()
+
+    app.handle_deny_permission()
+    assert not app.input_field.buffer.read_only()
+
+
+def test_tui_permission_panel_shows_requested_operation(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+
+    app.show_permission_request(
+        PermissionRequestEvent(
+            tool_name="Bash",
+            summary="Permission required for tool action",
+            details="command: gh pr view https://github.com/apache/seatunnel/pull/11841",
+        )
+    )
+
+    panel = app.render_permission_panel()
+    assert "Tool: Bash" in panel
+    assert "gh pr view https://github.com/apache/seatunnel/pull/11841" in panel
+    assert "❯ 1. Yes, proceed" in panel
+    assert "2. No, deny" in panel
 
 
 def test_tui_ctrl_c_requests_exit_when_input_is_empty(tmp_path: Path) -> None:

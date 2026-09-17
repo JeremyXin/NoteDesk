@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import platform
 import shutil
 from importlib.metadata import version
@@ -213,12 +214,20 @@ def launch_tui(settings: AppSettings, tui: NoteDeskTUI | None = None) -> None:
     )
     enable_kitty_keyboard = getattr(tui, "enable_kitty_keyboard", None)
     disable_kitty_keyboard = getattr(tui, "disable_kitty_keyboard", None)
+    agentscope_logger = logging.getLogger("as")
+    previous_log_level = agentscope_logger.level
     try:
+        # AgentScope writes iteration warnings through its own logger. Letting
+        # that handler write directly to a full-screen terminal corrupts the
+        # prompt_toolkit input/status rows, so surface terminal-safe state via
+        # ReplyLifecycleEvent instead.
+        agentscope_logger.setLevel(logging.ERROR)
         if enable_kitty_keyboard is None:
             application.run()
         else:
             application.run(pre_run=enable_kitty_keyboard)
     finally:
+        agentscope_logger.setLevel(previous_log_level)
         if disable_kitty_keyboard is not None:
             disable_kitty_keyboard(application.output)
 

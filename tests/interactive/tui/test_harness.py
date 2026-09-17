@@ -1,7 +1,12 @@
 import asyncio
 from pathlib import Path
 
-from notedesk.agent.events import ReplyLifecycleEvent, TaskSnapshotEvent, TextDeltaEvent
+from notedesk.agent.events import (
+    PermissionRequestEvent,
+    ReplyLifecycleEvent,
+    TaskSnapshotEvent,
+    TextDeltaEvent,
+)
 from notedesk.agent.middleware import TaskSnapshot, TaskSnapshotItem
 from notedesk.interactive.tui.app import NoteDeskTUI
 from tests.interactive.tui.harness import TUIHarness
@@ -46,6 +51,36 @@ class AcceptanceRuntime:
         return None
 
 
+class PermissionRuntime(AcceptanceRuntime):
+    def __init__(self) -> None:
+        super().__init__()
+        self.approved = asyncio.Event()
+
+    async def run_once(self, prompt: str):
+        self.submitted.append(prompt)
+        await self.ui_queue.put(
+            PermissionRequestEvent(
+                tool_name="Bash",
+                summary="Permission required for tool action",
+                details="command: gh pr view https://github.com/apache/seatunnel/pull/11841",
+            )
+        )
+        await self.approved.wait()
+        await self.ui_queue.put(TextDeltaEvent(delta="approved result"))
+        await self.ui_queue.put(
+            ReplyLifecycleEvent(
+                phase="end",
+                reply_id="r1",
+                finished_reason="exceed_max_iters",
+            )
+        )
+        return None
+
+    async def resume_permission(self, approved: bool):
+        if approved:
+            self.approved.set()
+
+
 def test_tui_harness_drives_real_input_to_streamed_reply(tmp_path: Path) -> None:
     async def scenario() -> None:
         runtime = AcceptanceRuntime()
@@ -61,6 +96,30 @@ def test_tui_harness_drives_real_input_to_streamed_reply(tmp_path: Path) -> None
             assert "- Done" in harness.transcript()
             assert "Collect tweets" in harness.tasks()
             assert harness.status() == "Idle"
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())
+
+
+def test_tui_harness_drives_permission_panel_approval(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        runtime = PermissionRuntime()
+        harness = TUIHarness(NoteDeskTUI(tmp_path, tmp_path / "artifacts"), runtime)
+        await harness.start()
+        try:
+            await harness.type_text("Read the PR")
+            await harness.press("enter")
+            await harness.wait_until(
+                lambda: harness.status() == "Waiting for permission"
+            )
+            assert "gh pr view" in harness.tui.render_permission_panel()
+            assert "Permission required for tool action" not in harness.transcript()
+
+            await harness.press("ctrl-y")
+            await harness.wait_until(lambda: "approved result" in harness.transcript())
+            assert harness.tui.pending_permission is None
+            assert harness.status() == "Stopped: max iterations reached"
         finally:
             await harness.stop()
 

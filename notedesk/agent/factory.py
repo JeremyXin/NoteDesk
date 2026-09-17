@@ -14,6 +14,10 @@ from notedesk.model.factory import ModelFactory
 from notedesk.skills.discovery import discover_skill_catalog
 from notedesk.skills.resolver import resolve_skill_loaders
 
+
+DEFAULT_MAX_AGENT_ITERATIONS = 32
+
+
 def build_session_toolkit(session_cwd: Path, skill_directories: list[str]) -> Toolkit:
     tools = [
         TaskCreate(),
@@ -46,6 +50,6 @@ def build_agent_session(settings: AppSettings, role_map: ModelRoleMap) -> Agent:
         model=model_factory.resolve("agent"),
         toolkit=toolkit,
         state=state,
-        react_config=ReActConfig(max_iters=8),
+        react_config=ReActConfig(max_iters=DEFAULT_MAX_AGENT_ITERATIONS),
         injection_config=InjectionConfig(timezone="Asia/Shanghai"),
     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 from pathlib import Path
 
 from notedesk.config.models import (
@@ -109,3 +110,36 @@ def test_launch_tui_wires_runtime_controller_and_callbacks(
     assert (tmp_path / "artifacts").is_dir()
     assert tui.application.ran is True
     assert len(tui.application.scheduled) == 4
+
+
+def test_launch_tui_suppresses_agentscope_terminal_warnings_during_run(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        cli_module, "build_agent_session", lambda settings, role_map: object()
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "AgentSessionRuntime",
+        lambda agent, ui_queue, artifact_path, max_output_tokens: FakeRuntime(
+            agent, ui_queue, artifact_path
+        ),
+    )
+    monkeypatch.setattr(cli_module, "TUISessionController", FakeController)
+
+    tui = FakeTUI()
+    observed_levels: list[int] = []
+    original_run = tui.application.run
+
+    def _run() -> None:
+        observed_levels.append(logging.getLogger("as").level)
+        original_run()
+
+    tui.application.run = _run
+    logger = logging.getLogger("as")
+    previous_level = logger.level
+
+    cli_module.launch_tui(settings=_settings(tmp_path), tui=tui)
+
+    assert observed_levels == [logging.ERROR]
+    assert logger.level == previous_level

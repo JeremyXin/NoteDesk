@@ -1,5 +1,6 @@
 from agentscope.event import (
     ReplyEndEvent,
+    ReplyFinishedReason,
     ReplyStartEvent,
     RequireUserConfirmEvent,
     TextBlockDeltaEvent,
@@ -83,7 +84,8 @@ def test_map_agent_event_projects_permission_request_as_semantic_summary() -> No
     assert isinstance(mapped, PermissionRequestEvent)
     assert mapped.tool_name == "Bash"
     assert mapped.summary == "Permission required for tool action"
-    assert "twitter post" not in mapped.model_dump_json()
+    assert mapped.details == 'command: twitter post "hello"'
+    assert '"input"' not in mapped.model_dump_json()
 
 
 def test_map_agent_event_projects_reply_lifecycle() -> None:
@@ -96,6 +98,17 @@ def test_map_agent_event_projects_reply_lifecycle() -> None:
     assert isinstance(mapped_start, ReplyLifecycleEvent)
     assert mapped_start.phase == "start"
     assert isinstance(mapped_end, ReplyLifecycleEvent)
+    assert mapped_end.finished_reason == "completed"
+
+    exceeded = map_agent_event(
+        ReplyEndEvent(
+            session_id="session-1",
+            reply_id="reply-1",
+            finished_reason=ReplyFinishedReason.EXCEED_MAX_ITERS,
+        )
+    )
+    assert isinstance(exceeded, ReplyLifecycleEvent)
+    assert exceeded.finished_reason == "exceed_max_iters"
     assert mapped_end.phase == "end"
 
 

@@ -9,14 +9,16 @@ from agentscope.agent import Agent
 from agentscope.event import (
     ConfirmResult,
     ModelCallEndEvent,
+    ReplyEndEvent,
     RequireUserConfirmEvent,
+    TextBlockDeltaEvent,
     UserConfirmResultEvent,
     UserInterruptEvent,
 )
 from agentscope.message import Msg, TextBlock, UserMsg
 from agentscope.state import AgentState, Task
 
-from notedesk.agent.events import map_agent_event
+from notedesk.agent.events import TextDeltaEvent, map_agent_event
 from notedesk.agent.factory import build_agent_session
 from notedesk.agent.middleware import publish_task_snapshot
 from notedesk.artifacts.markdown import ArtifactValidationError, save_markdown_artifact
@@ -109,6 +111,8 @@ class AgentSessionRuntime:
     ):
         final_msg: Msg | None = None
         last_output_tokens = 0
+        streamed_text = ""
+        finished_reason = None
 
         async for chunk in self.agent.reply_stream(
             input_event,
@@ -119,6 +123,10 @@ class AgentSessionRuntime:
             mapped = map_agent_event(chunk)
             if mapped is not None:
                 await self.ui_queue.put(mapped)
+            if isinstance(chunk, TextBlockDeltaEvent):
+                streamed_text += chunk.delta
+            if isinstance(chunk, ReplyEndEvent):
+                finished_reason = getattr(chunk.finished_reason, "value", chunk.finished_reason)
             await publish_task_snapshot(self.ui_queue, self.agent.state)
             if isinstance(chunk, ModelCallEndEvent):
                 last_output_tokens = chunk.output_tokens
@@ -131,6 +139,12 @@ class AgentSessionRuntime:
         markdown = _extract_text(final_msg)
         if not markdown:
             return None
+
+        # Some AgentScope paths expose the completed message without emitting
+        # text deltas. Keep the transcript complete, but never surface the
+        # framework's max-iteration diagnostic as if it were an answer.
+        if not streamed_text and finished_reason != "exceed_max_iters":
+            await self.ui_queue.put(TextDeltaEvent(delta=markdown))
 
         if (
             last_output_tokens >= self.max_output_tokens

@@ -50,6 +50,10 @@ class TranscriptTurnProcessor(Processor):
         self,
         transformation_input: TransformationInput,
     ) -> Transformation:
+        # Conversation spacing intentionally inserts blank rows between turns.
+        # They are separators, not part of the user's highlighted row.
+        if not transformation_input.document.lines[transformation_input.lineno].strip():
+            return Transformation(transformation_input.fragments)
         mode = self._message_mode(
             transformation_input.document.lines,
             transformation_input.lineno,
@@ -134,6 +138,9 @@ class NoteDeskTUI:
             prompt="> ",
             height=Dimension(min=1, max=4, preferred=1),
             dont_extend_height=True,
+        )
+        self.input_field.buffer.read_only = Condition(
+            lambda: self.pending_permission is not None
         )
         self.task_field = TextArea(
             text="No active tasks.",
@@ -326,11 +333,24 @@ class NoteDeskTUI:
             title="NoteDesk",
             height=Dimension(min=11, max=11, preferred=11),
         )
+        permission_panel = ConditionalContainer(
+            content=Frame(
+                body=Window(
+                    content=FormattedTextControl(self.render_permission_panel),
+                    height=Dimension(min=8, max=10, preferred=8),
+                    wrap_lines=True,
+                ),
+                title="Permission required",
+                style="class:permission.frame",
+            ),
+            filter=Condition(lambda: self.pending_permission is not None),
+        )
         main_content = HSplit(
             [
                 welcome_panel_content,
                 self.transcript_field,
                 task_drawer,
+                permission_panel,
             ],
             align=VerticalAlign.TOP,
         )
@@ -350,8 +370,12 @@ class NoteDeskTUI:
                 Window(
                     content=FormattedTextControl(self.render_status_bar),
                     height=1,
+                    wrap_lines=False,
                 ),
             ],
+            # The permission panel needs additional rows above the input.
+            # Keep the dock expandable; a fixed max height smaller than the
+            # panel's minimum produces prompt_toolkit's "Window too small".
             height=Dimension(min=3, max=6, preferred=3),
             align=VerticalAlign.TOP,
         )
@@ -374,6 +398,7 @@ class NoteDeskTUI:
                     "welcome.notice": "",
                     "transcript.user": "bg:#f1f3f5 #111111",
                     "transcript.assistant-label": "bold #808080",
+                    "permission.frame": "fg:#7aa2f7",
                 }
             ),
             input=input,
@@ -760,6 +785,8 @@ class NoteDeskTUI:
         )
 
     def handle_submit(self) -> None:
+        if self.pending_permission is not None:
+            return
         submitted = self.input_field.text.strip()
         if not submitted:
             return
@@ -793,10 +820,27 @@ class NoteDeskTUI:
 
     def show_permission_request(self, event: PermissionRequestEvent) -> None:
         self.pending_permission = event
-        self.append_transcript(
-            f"! Permission needed: {event.summary} · Ctrl-Y approve · Ctrl-N deny"
-        )
         self.set_status("Waiting for permission")
+        self.scroll_transcript_to_bottom()
+        try:
+            get_app().invalidate()
+        except RuntimeError:
+            pass
+
+    def render_permission_panel(self) -> str:
+        if self.pending_permission is None:
+            return ""
+        event = self.pending_permission
+        operation = event.details or "The tool requests permission to continue."
+        return (
+            f"Tool: {event.tool_name}\n"
+            f"{event.summary}\n"
+            f"{operation}\n\n"
+            "Do you want to proceed?\n"
+            "❯ 1. Yes, proceed       Ctrl-Y\n"
+            "  2. No, deny           Ctrl-N\n\n"
+            "Esc to cancel · Ctrl-Y approve · Ctrl-N deny"
+        )
 
     def show_artifact_receipt(self, receipt: ArtifactReceipt) -> None:
         self.set_status("Artifact saved")
@@ -839,6 +883,10 @@ class NoteDeskTUI:
 
         @kb.add("escape")
         def _cancel(event) -> None:
+            if self.pending_permission is not None:
+                self.handle_deny_permission()
+                event.app.invalidate()
+                return
             if event.current_buffer is self.transcript_field.buffer:
                 event.app.layout.focus(self.input_field)
                 self.set_status("Input focused")
