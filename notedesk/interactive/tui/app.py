@@ -24,6 +24,8 @@ from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.input import vt100_parser
 from prompt_toolkit.styles import Style
 from prompt_toolkit.keys import Keys
+from prompt_toolkit.layout.processors import Processor, Transformation, TransformationInput
+from prompt_toolkit.utils import get_cwidth
 from prompt_toolkit.widgets import Frame, TextArea
 
 from notedesk.agent.events import PermissionRequestEvent
@@ -36,6 +38,63 @@ from notedesk.interactive.tui.tasks import TaskViewModel
 # from Ctrl+C so clipboard shortcuts cannot trigger the exit fallback.
 COMMAND_C_KEY = "\ue000"
 SHIFT_PRINTABLE_KEY = "\ue001"
+
+
+class TranscriptTurnProcessor(Processor):
+    """Apply distinct visual treatments to user and assistant turns."""
+
+    USER_PREFIX = "You  > "
+    ASSISTANT_PREFIX = "NoteDesk > "
+
+    def apply_transformation(
+        self,
+        transformation_input: TransformationInput,
+    ) -> Transformation:
+        mode = self._message_mode(
+            transformation_input.document.lines,
+            transformation_input.lineno,
+        )
+        if mode is None:
+            return Transformation(transformation_input.fragments)
+
+        fragments = self._style_fragments(
+            transformation_input.fragments,
+            mode,
+            transformation_input.width,
+        )
+        return Transformation(fragments)
+
+    def _message_mode(self, lines: list[str], lineno: int) -> str | None:
+        mode: str | None = None
+        for line in lines[: lineno + 1]:
+            if line.startswith(self.USER_PREFIX):
+                mode = "user"
+            elif line.startswith(self.ASSISTANT_PREFIX):
+                mode = "assistant"
+        return mode
+
+    def _style_fragments(self, fragments, mode: str, width: int):
+        styled = []
+        for fragment in fragments:
+            style, text, *rest = fragment
+            if mode == "user":
+                style = f"{style} class:transcript.user".strip()
+            elif text.startswith(self.ASSISTANT_PREFIX):
+                prefix = text[: len(self.ASSISTANT_PREFIX)]
+                remainder = text[len(self.ASSISTANT_PREFIX) :]
+                styled.append(
+                    (f"{style} class:transcript.assistant-label".strip(), prefix, *rest)
+                )
+                if remainder:
+                    styled.append((style, remainder, *rest))
+                continue
+            styled.append((style, text, *rest))
+        if mode == "user":
+            line_width = sum(get_cwidth(text) for _, text, *_ in styled)
+            padding = max(0, width - line_width)
+            if padding:
+                styled.append(("class:transcript.user", " " * padding))
+        return styled
 
 
 class NoteDeskTUI:
@@ -65,6 +124,7 @@ class NoteDeskTUI:
             focusable=True,
             focus_on_click=True,
             height=Dimension(weight=1),
+            input_processors=[TranscriptTurnProcessor()],
         )
         self.input_field = TextArea(
             text="",
@@ -311,6 +371,8 @@ class NoteDeskTUI:
                     "welcome.meta": "",
                     "welcome.value": "bold",
                     "welcome.notice": "",
+                    "transcript.user": "bg:#f1f3f5 #111111",
+                    "transcript.assistant-label": "bold #808080",
                 }
             ),
             input=input,

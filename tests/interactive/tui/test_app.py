@@ -328,6 +328,30 @@ def test_tui_formats_user_turns_and_keeps_transcript_scrollable(tmp_path: Path) 
     assert not app.transcript_field.window.right_margins
 
 
+def test_tui_visually_distinguishes_user_and_assistant_turns(tmp_path: Path) -> None:
+    async def render_transcript() -> tuple[list, list]:
+        app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+        with create_pipe_input() as pipe_input:
+            application = app.build_application(
+                input=pipe_input,
+                output=DummyOutput(),
+            )
+            app.append_transcript("You  > hello")
+            app.append_transcript_delta("answer")
+            with set_app(application):
+                content = app.transcript_field.control.create_content(80, 10)
+                return content.get_line(0), content.get_line(1)
+
+    user_line, assistant_line = asyncio.run(render_transcript())
+
+    assert any(
+        "transcript.user" in style and "You  > hello" in text
+        for style, text, *_ in user_line
+    )
+    assert assistant_line[0][0].find("transcript.assistant-label") >= 0
+    assert assistant_line[0][1] == "NoteDesk > "
+
+
 def test_tui_uses_mouse_scrolling_without_visible_scrollbar(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,
