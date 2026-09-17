@@ -340,7 +340,7 @@ def test_tui_visually_distinguishes_user_and_assistant_turns(tmp_path: Path) -> 
             app.append_transcript_delta("answer")
             with set_app(application):
                 content = app.transcript_field.control.create_content(80, 10)
-                return content.get_line(0), content.get_line(1)
+                return content.get_line(0), content.get_line(2)
 
     user_line, assistant_line = asyncio.run(render_transcript())
 
@@ -350,6 +350,27 @@ def test_tui_visually_distinguishes_user_and_assistant_turns(tmp_path: Path) -> 
     )
     assert assistant_line[0][0].find("transcript.assistant-label") >= 0
     assert assistant_line[0][1] == "NoteDesk > "
+
+
+def test_tui_adds_vertical_spacing_between_conversation_turns(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+
+    app.append_transcript("You  > first")
+    app.append_transcript_delta("first answer")
+    app.append_transcript("You  > second")
+
+    assert app.transcript_field.text == (
+        "You  > first\n\nNoteDesk > first answer\n\nYou  > second"
+    )
+
+
+def test_tui_keeps_tool_lifecycle_messages_compact(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+
+    app.append_transcript("Tool: Running tool")
+    app.append_transcript("Tool: Tool finished")
+
+    assert app.transcript_field.text == "Tool: Running tool\nTool: Tool finished"
 
 
 def test_tui_uses_mouse_scrolling_without_visible_scrollbar(tmp_path: Path) -> None:

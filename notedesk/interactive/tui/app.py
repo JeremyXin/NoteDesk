@@ -104,6 +104,7 @@ class NoteDeskTUI:
         self.task_drawer_open = False
         self.status_text = "Idle"
         self._transcript_line_boundary = False
+        self._transcript_turn_boundary = False
         self._transcript_follow_bottom = True
         self._kitty_keyboard_enabled = False
         self._ctrl_c_exit_pending = False
@@ -618,25 +619,29 @@ class NoteDeskTUI:
         footer = f"{view.completed_count}/{view.total_count} completed"
         self.task_field.text = "\n".join(lines + [footer]) if lines else "No active tasks."
 
-    def append_transcript(self, line: str) -> None:
+    def append_transcript(self, line: str, *, user_turn: bool | None = None) -> None:
+        if user_turn is None:
+            user_turn = line.startswith(TranscriptTurnProcessor.USER_PREFIX)
         prefix = (
-            "\n"
+            ("\n\n" if user_turn else "\n")
             if self.transcript_field.text and not self.transcript_field.text.endswith("\n")
             else ""
         )
         self._set_transcript_text(f"{self.transcript_field.text}{prefix}{line}")
         self._transcript_line_boundary = True
+        self._transcript_turn_boundary = user_turn
 
     def append_transcript_delta(self, delta: str) -> None:
         if not delta:
             return
         text = self.transcript_field.text
         if self._transcript_line_boundary and text and not text.endswith("\n"):
-            text += "\n"
+            text += "\n\n" if self._transcript_turn_boundary else "\n"
         if self._transcript_line_boundary or not text:
             text += "NoteDesk > "
         self._set_transcript_text(f"{text}{delta}")
         self._transcript_line_boundary = False
+        self._transcript_turn_boundary = False
 
     def _set_transcript_text(self, text: str) -> None:
         buffer = self.transcript_field.buffer
@@ -760,7 +765,7 @@ class NoteDeskTUI:
             return
         self.input_history.append_string(submitted)
         self._input_history_index = None
-        self.append_transcript(f"You  > {submitted}")
+        self.append_transcript(f"You  > {submitted}", user_turn=True)
         self.on_submit(submitted)
         self.input_field.buffer.reset()
         self.set_status("Submitted")
