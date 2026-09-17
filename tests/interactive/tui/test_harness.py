@@ -204,3 +204,35 @@ def test_tui_harness_expands_transcript_after_conversation_starts(
             await harness.stop()
 
     asyncio.run(scenario())
+
+
+def test_tui_harness_scrolls_shared_transcript_with_mouse_wheel(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+        harness = TUIHarness(tui, AcceptanceRuntime())
+        await harness.start()
+        try:
+            tui.append_transcript("\n".join(f"line {index}" for index in range(100)))
+            await harness.wait_until(
+                lambda: (
+                    tui._transcript_scroll_pane is not None
+                    and tui._transcript_scroll_pane.vertical_scroll > 0
+                )
+            )
+            initial_scroll = tui._transcript_scroll_pane.vertical_scroll
+
+            for _ in range(5):
+                await harness.send_terminal_sequence("\x1b[<64;10;20M")
+
+            await harness.wait_until(
+                lambda: (
+                    tui._transcript_scroll_pane is not None
+                    and tui._transcript_scroll_pane.vertical_scroll < initial_scroll
+                )
+            )
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())

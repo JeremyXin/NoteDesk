@@ -87,6 +87,14 @@ class NoteDeskTUI:
         original_mouse_handler = control.mouse_handler
 
         def mouse_handler(mouse_event: MouseEvent):
+            if mouse_event.event_type == MouseEventType.SCROLL_UP:
+                self.scroll_transcript(-3)
+                get_app().invalidate()
+                return None
+            if mouse_event.event_type == MouseEventType.SCROLL_DOWN:
+                self.scroll_transcript(3)
+                get_app().invalidate()
+                return None
             if mouse_event.event_type == MouseEventType.MOUSE_DOWN:
                 get_app().layout.current_control = control
             result = original_mouse_handler(mouse_event)
