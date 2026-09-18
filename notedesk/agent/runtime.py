@@ -9,7 +9,6 @@ from agentscope.agent import Agent
 from agentscope.event import (
     ConfirmResult,
     ModelCallEndEvent,
-    ReplyEndEvent,
     RequireUserConfirmEvent,
     TextBlockDeltaEvent,
     UserConfirmResultEvent,
@@ -112,7 +111,6 @@ class AgentSessionRuntime:
         final_msg: Msg | None = None
         last_output_tokens = 0
         streamed_text = ""
-        finished_reason = None
 
         async for chunk in self.agent.reply_stream(
             input_event,
@@ -125,8 +123,6 @@ class AgentSessionRuntime:
                 await self.ui_queue.put(mapped)
             if isinstance(chunk, TextBlockDeltaEvent):
                 streamed_text += chunk.delta
-            if isinstance(chunk, ReplyEndEvent):
-                finished_reason = getattr(chunk.finished_reason, "value", chunk.finished_reason)
             await publish_task_snapshot(self.ui_queue, self.agent.state)
             if isinstance(chunk, ModelCallEndEvent):
                 last_output_tokens = chunk.output_tokens
@@ -144,10 +140,9 @@ class AgentSessionRuntime:
         # supplying the complete final message. Reconcile that message with
         # what the TUI already received so the visible reply matches the
         # artifact without duplicating the streamed prefix.
-        if finished_reason != "exceed_max_iters":
-            remaining_text = _unstreamed_text(markdown, streamed_text)
-            if remaining_text:
-                await self.ui_queue.put(TextDeltaEvent(delta=remaining_text))
+        remaining_text = _unstreamed_text(markdown, streamed_text)
+        if remaining_text:
+            await self.ui_queue.put(TextDeltaEvent(delta=remaining_text))
 
         if (
             last_output_tokens >= self.max_output_tokens

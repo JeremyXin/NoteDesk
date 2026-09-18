@@ -1,12 +1,17 @@
 import asyncio
 
 from agentscope.agent import Agent
-from agentscope.event import RequireUserConfirmEvent, TextBlockDeltaEvent
+from agentscope.event import (
+    ReplyEndEvent,
+    RequireUserConfirmEvent,
+    TextBlockDeltaEvent,
+)
 from agentscope.credential import DeepSeekCredential
 from agentscope.formatter import FormatterBase
 from agentscope.message import Msg, TextBlock, ToolCallBlock
 from agentscope.model import ChatModelBase, ChatResponse, ChatUsage
 from agentscope.state import AgentState
+from agentscope.types import ReplyFinishedReason
 
 from notedesk.agent.factory import build_session_toolkit
 from notedesk.agent.runtime import AgentSessionRuntime
@@ -102,6 +107,45 @@ def test_agent_session_runtime_emits_final_text_missing_from_partial_deltas(tmp_
         if getattr(event, "kind", None) == "text_delta":
             deltas.append(event.delta)
     assert "".join(deltas) == "# Summary\n\n- Complete result"
+
+
+def test_agent_session_runtime_preserves_final_text_after_max_iterations(tmp_path) -> None:
+    class PartialDeltaAgent:
+        state = AgentState()
+
+        async def reply_stream(self, input_event, yield_final_msg):
+            yield TextBlockDeltaEvent(
+                reply_id="reply-1",
+                block_id="block-1",
+                delta="## Need attention",
+            )
+            yield ReplyEndEvent(
+                session_id="session-1",
+                reply_id="reply-1",
+                finished_reason=ReplyFinishedReason.EXCEED_MAX_ITERS,
+            )
+            yield Msg(
+                name="notedesk",
+                role="assistant",
+                content=[TextBlock(text="## Need attention\n\n- Complete detail")],
+            )
+
+    queue: asyncio.Queue = asyncio.Queue()
+    runtime = AgentSessionRuntime(
+        agent=PartialDeltaAgent(),
+        ui_queue=queue,
+        artifact_path=tmp_path / "reply.md",
+    )
+
+    receipt = asyncio.run(runtime.run_once("Summarize this"))
+
+    assert receipt is not None
+    deltas = []
+    while not queue.empty():
+        event = queue.get_nowait()
+        if getattr(event, "kind", None) == "text_delta":
+            deltas.append(event.delta)
+    assert "".join(deltas) == "## Need attention\n\n- Complete detail"
 
 
 def test_agent_session_runtime_continues_when_output_limit_is_reached(tmp_path) -> None:
