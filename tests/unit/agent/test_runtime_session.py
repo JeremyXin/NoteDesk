@@ -8,7 +8,7 @@ from agentscope.event import (
 )
 from agentscope.credential import DeepSeekCredential
 from agentscope.formatter import FormatterBase
-from agentscope.message import Msg, TextBlock, ToolCallBlock
+from agentscope.message import Msg, TextBlock, ToolCallBlock, ToolCallState
 from agentscope.model import ChatModelBase, ChatResponse, ChatUsage
 from agentscope.state import AgentState
 from agentscope.types import ReplyFinishedReason
@@ -109,7 +109,7 @@ def test_agent_session_runtime_emits_final_text_missing_from_partial_deltas(tmp_
     assert "".join(deltas) == "# Summary\n\n- Complete result"
 
 
-def test_agent_session_runtime_preserves_final_text_after_max_iterations(tmp_path) -> None:
+def test_agent_session_runtime_hides_framework_text_after_max_iterations(tmp_path) -> None:
     class PartialDeltaAgent:
         state = AgentState()
 
@@ -128,6 +128,7 @@ def test_agent_session_runtime_preserves_final_text_after_max_iterations(tmp_pat
                 name="notedesk",
                 role="assistant",
                 content=[TextBlock(text="## Need attention\n\n- Complete detail")],
+                finished_reason=ReplyFinishedReason.EXCEED_MAX_ITERS,
             )
 
     queue: asyncio.Queue = asyncio.Queue()
@@ -139,13 +140,54 @@ def test_agent_session_runtime_preserves_final_text_after_max_iterations(tmp_pat
 
     receipt = asyncio.run(runtime.run_once("Summarize this"))
 
-    assert receipt is not None
+    assert receipt is None
     deltas = []
     while not queue.empty():
         event = queue.get_nowait()
         if getattr(event, "kind", None) == "text_delta":
             deltas.append(event.delta)
-    assert "".join(deltas) == "## Need attention\n\n- Complete detail"
+    assert "".join(deltas) == "## Need attention"
+
+
+def test_agent_session_runtime_hides_permission_waiting_placeholder(tmp_path) -> None:
+    class WaitingAgent:
+        state = AgentState()
+
+        async def reply_stream(self, input_event, yield_final_msg):
+            tool_call = ToolCallBlock(
+                id="call-1",
+                name="Bash",
+                input='{"command":"twitter post \\"hello\\""}',
+                state=ToolCallState.ASKING,
+            )
+            yield RequireUserConfirmEvent(reply_id="reply-1", tool_calls=[tool_call])
+            yield Msg(
+                name="notedesk",
+                role="assistant",
+                content=[
+                    TextBlock(
+                        text="I'm waiting for your permission or the external "
+                        "execution to finish."
+                    )
+                ],
+            )
+
+    queue: asyncio.Queue = asyncio.Queue()
+    runtime = AgentSessionRuntime(
+        agent=WaitingAgent(),
+        ui_queue=queue,
+        artifact_path=tmp_path / "reply.md",
+    )
+
+    receipt = asyncio.run(runtime.run_once("Post an update"))
+
+    assert receipt is None
+    assert runtime.pending_permission_event is not None
+    assert not [
+        event
+        for event in list(queue._queue)
+        if getattr(event, "kind", None) == "text_delta"
+    ]
 
 
 def test_agent_session_runtime_continues_when_output_limit_is_reached(tmp_path) -> None:

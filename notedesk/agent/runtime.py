@@ -16,6 +16,7 @@ from agentscope.event import (
 )
 from agentscope.message import Msg, TextBlock, UserMsg
 from agentscope.state import AgentState, Task
+from agentscope.types import ReplyFinishedReason
 
 from notedesk.agent.events import TextDeltaEvent, map_agent_event
 from notedesk.agent.factory import build_agent_session
@@ -111,6 +112,7 @@ class AgentSessionRuntime:
         final_msg: Msg | None = None
         last_output_tokens = 0
         streamed_text = ""
+        waiting_for_permission = False
 
         async for chunk in self.agent.reply_stream(
             input_event,
@@ -118,6 +120,7 @@ class AgentSessionRuntime:
         ):
             if isinstance(chunk, RequireUserConfirmEvent):
                 self.pending_permission_event = chunk
+                waiting_for_permission = True
             mapped = map_agent_event(chunk)
             if mapped is not None:
                 await self.ui_queue.put(mapped)
@@ -130,6 +133,8 @@ class AgentSessionRuntime:
                 final_msg = chunk
 
         if final_msg is None:
+            return None
+        if waiting_for_permission or _is_framework_terminal_message(final_msg):
             return None
 
         markdown = _extract_text(final_msg)
@@ -240,6 +245,15 @@ def _unstreamed_text(final_text: str, streamed_text: str) -> str:
     while overlap and not streamed_text.endswith(final_text[:overlap]):
         overlap -= 1
     return final_text[overlap:]
+
+
+def _is_framework_terminal_message(message: Msg) -> bool:
+    """Exclude AgentScope's non-answer messages from transcript/artifacts."""
+    reason = getattr(message.finished_reason, "value", message.finished_reason)
+    return reason in {
+        ReplyFinishedReason.EXCEED_MAX_ITERS.value,
+        ReplyFinishedReason.INTERRUPTED.value,
+    }
 
 
 async def run_live_smoke(
