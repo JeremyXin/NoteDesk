@@ -1,11 +1,12 @@
 import asyncio
 
 from agentscope.agent import Agent
-from agentscope.event import RequireUserConfirmEvent
+from agentscope.event import RequireUserConfirmEvent, TextBlockDeltaEvent
 from agentscope.credential import DeepSeekCredential
 from agentscope.formatter import FormatterBase
-from agentscope.message import TextBlock, ToolCallBlock
+from agentscope.message import Msg, TextBlock, ToolCallBlock
 from agentscope.model import ChatModelBase, ChatResponse, ChatUsage
+from agentscope.state import AgentState
 
 from notedesk.agent.factory import build_session_toolkit
 from notedesk.agent.runtime import AgentSessionRuntime
@@ -67,6 +68,40 @@ def test_agent_session_runtime_runs_real_reply_stream_and_persists_artifact(tmp_
     kinds = [event.kind for event in emitted if hasattr(event, "kind")]
     assert "reply_lifecycle" in kinds
     assert "text_delta" in kinds
+
+
+def test_agent_session_runtime_emits_final_text_missing_from_partial_deltas(tmp_path) -> None:
+    class PartialDeltaAgent:
+        state = AgentState()
+
+        async def reply_stream(self, input_event, yield_final_msg):
+            yield TextBlockDeltaEvent(
+                reply_id="reply-1",
+                block_id="block-1",
+                delta="# Summary",
+            )
+            yield Msg(
+                name="notedesk",
+                role="assistant",
+                content=[TextBlock(text="# Summary\n\n- Complete result")],
+            )
+
+    queue: asyncio.Queue = asyncio.Queue()
+    runtime = AgentSessionRuntime(
+        agent=PartialDeltaAgent(),
+        ui_queue=queue,
+        artifact_path=tmp_path / "reply.md",
+    )
+
+    receipt = asyncio.run(runtime.run_once("Summarize this"))
+
+    assert receipt is not None
+    deltas = []
+    while not queue.empty():
+        event = queue.get_nowait()
+        if getattr(event, "kind", None) == "text_delta":
+            deltas.append(event.delta)
+    assert "".join(deltas) == "# Summary\n\n- Complete result"
 
 
 def test_agent_session_runtime_continues_when_output_limit_is_reached(tmp_path) -> None:

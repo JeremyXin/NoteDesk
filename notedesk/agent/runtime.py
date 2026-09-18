@@ -140,11 +140,14 @@ class AgentSessionRuntime:
         if not markdown:
             return None
 
-        # Some AgentScope paths expose the completed message without emitting
-        # text deltas. Keep the transcript complete, but never surface the
-        # framework's max-iteration diagnostic as if it were an answer.
-        if not streamed_text and finished_reason != "exceed_max_iters":
-            await self.ui_queue.put(TextDeltaEvent(delta=markdown))
+        # AgentScope can emit only an initial subset of text deltas before
+        # supplying the complete final message. Reconcile that message with
+        # what the TUI already received so the visible reply matches the
+        # artifact without duplicating the streamed prefix.
+        if finished_reason != "exceed_max_iters":
+            remaining_text = _unstreamed_text(markdown, streamed_text)
+            if remaining_text:
+                await self.ui_queue.put(TextDeltaEvent(delta=remaining_text))
 
         if (
             last_output_tokens >= self.max_output_tokens
@@ -227,6 +230,21 @@ def _extract_text(message: Msg) -> str:
     return "".join(
         block.text for block in message.content if isinstance(block, TextBlock)
     )
+
+
+def _unstreamed_text(final_text: str, streamed_text: str) -> str:
+    """Return only the final-message portion not already streamed."""
+    if not streamed_text:
+        return final_text
+    if final_text.startswith(streamed_text):
+        return final_text[len(streamed_text) :]
+    if final_text in streamed_text:
+        return ""
+
+    overlap = min(len(final_text), len(streamed_text))
+    while overlap and not streamed_text.endswith(final_text[:overlap]):
+        overlap -= 1
+    return final_text[overlap:]
 
 
 async def run_live_smoke(
