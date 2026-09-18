@@ -102,7 +102,7 @@ def test_tui_harness_drives_real_input_to_streamed_reply(tmp_path: Path) -> None
     asyncio.run(scenario())
 
 
-def test_tui_harness_drives_permission_panel_approval(tmp_path: Path) -> None:
+def test_tui_harness_drives_claude_style_inline_permission_approval(tmp_path: Path) -> None:
     async def scenario() -> None:
         runtime = PermissionRuntime()
         harness = TUIHarness(NoteDeskTUI(tmp_path, tmp_path / "artifacts"), runtime)
@@ -113,12 +113,16 @@ def test_tui_harness_drives_permission_panel_approval(tmp_path: Path) -> None:
             await harness.wait_until(
                 lambda: harness.status() == "Waiting for permission"
             )
-            assert "gh pr view" in harness.tui.render_permission_panel()
-            assert "Permission required for tool action" not in harness.transcript()
+            assert "Bash command" in harness.transcript()
+            assert "gh pr view" in harness.transcript()
+            assert "Do you want to proceed?" in harness.transcript()
+            assert "❯ 1. Yes, proceed" in harness.transcript()
+            assert harness.tui.input_field.buffer.read_only()
 
             await harness.press("ctrl-y")
             await harness.wait_until(lambda: "approved result" in harness.transcript())
             assert harness.tui.pending_permission is None
+            assert not harness.tui.input_field.buffer.read_only()
             assert harness.status() == "Stopped: max iterations reached"
         finally:
             await harness.stop()

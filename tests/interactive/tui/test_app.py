@@ -844,7 +844,7 @@ def test_tui_ctrl_c_clears_input_then_sets_exit_status(tmp_path: Path) -> None:
     assert second == "request_exit"
 
 
-def test_tui_renders_permission_and_artifact_messages(tmp_path: Path) -> None:
+def test_tui_renders_permission_card_in_transcript_and_artifact_messages(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,
         artifact_root=tmp_path / "artifacts",
@@ -864,9 +864,9 @@ def test_tui_renders_permission_and_artifact_messages(tmp_path: Path) -> None:
         )
     )
 
-    assert "Permission required for tool action" in app.render_permission_panel()
-    assert "Ctrl-Y approve · Ctrl-N deny" in app.render_permission_panel()
-    assert "Permission required for tool action" not in app.transcript_field.text
+    assert "Bash command" in app.transcript_field.text
+    assert "Permission required for tool action" in app.transcript_field.text
+    assert "Ctrl-Y approve · Ctrl-N deny" in app.transcript_field.text
     assert "summary.md" not in app.transcript_field.text
     assert app.status_text == "Artifact saved"
     assert app.input_field.buffer.read_only()
@@ -875,7 +875,7 @@ def test_tui_renders_permission_and_artifact_messages(tmp_path: Path) -> None:
     assert not app.input_field.buffer.read_only()
 
 
-def test_tui_permission_panel_shows_requested_operation(tmp_path: Path) -> None:
+def test_tui_permission_card_shows_requested_operation(tmp_path: Path) -> None:
     app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
 
     app.show_permission_request(
@@ -886,11 +886,12 @@ def test_tui_permission_panel_shows_requested_operation(tmp_path: Path) -> None:
         )
     )
 
-    panel = app.render_permission_panel()
-    assert "Tool: Bash" in panel
-    assert "gh pr view https://github.com/apache/seatunnel/pull/11841" in panel
-    assert "❯ 1. Yes, proceed" in panel
-    assert "2. No, deny" in panel
+    card = app.transcript_field.text
+    assert "────────────────────────" in card
+    assert "Bash command" in card
+    assert "gh pr view https://github.com/apache/seatunnel/pull/11841" in card
+    assert "❯ 1. Yes, proceed" in card
+    assert "2. No, deny" in card
 
 
 def test_tui_ctrl_c_requests_exit_when_input_is_empty(tmp_path: Path) -> None:

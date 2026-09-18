@@ -54,6 +54,19 @@ class TranscriptTurnProcessor(Processor):
         # They are separators, not part of the user's highlighted row.
         if not transformation_input.document.lines[transformation_input.lineno].strip():
             return Transformation(transformation_input.fragments)
+        line = transformation_input.document.lines[transformation_input.lineno]
+        if line and set(line) == {"─"}:
+            return Transformation(
+                [("class:transcript.tool-divider", text, *rest) for _, text, *rest in transformation_input.fragments]
+            )
+        if line.endswith(" command"):
+            return Transformation(
+                [("class:transcript.tool-title", text, *rest) for _, text, *rest in transformation_input.fragments]
+            )
+        if line.startswith("❯ 1."):
+            return Transformation(
+                [("class:transcript.permission-selected", text, *rest) for _, text, *rest in transformation_input.fragments]
+            )
         mode = self._message_mode(
             transformation_input.document.lines,
             transformation_input.lineno,
@@ -333,24 +346,11 @@ class NoteDeskTUI:
             title="NoteDesk",
             height=Dimension(min=11, max=11, preferred=11),
         )
-        permission_panel = ConditionalContainer(
-            content=Frame(
-                body=Window(
-                    content=FormattedTextControl(self.render_permission_panel),
-                    height=Dimension(min=8, max=10, preferred=8),
-                    wrap_lines=True,
-                ),
-                title="Permission required",
-                style="class:permission.frame",
-            ),
-            filter=Condition(lambda: self.pending_permission is not None),
-        )
         main_content = HSplit(
             [
                 welcome_panel_content,
                 self.transcript_field,
                 task_drawer,
-                permission_panel,
             ],
             align=VerticalAlign.TOP,
         )
@@ -373,9 +373,6 @@ class NoteDeskTUI:
                     wrap_lines=False,
                 ),
             ],
-            # The permission panel needs additional rows above the input.
-            # Keep the dock expandable; a fixed max height smaller than the
-            # panel's minimum produces prompt_toolkit's "Window too small".
             height=Dimension(min=3, max=6, preferred=3),
             align=VerticalAlign.TOP,
         )
@@ -398,7 +395,9 @@ class NoteDeskTUI:
                     "welcome.notice": "",
                     "transcript.user": "bg:#f1f3f5 #111111",
                     "transcript.assistant-label": "bold #808080",
-                    "permission.frame": "fg:#7aa2f7",
+                    "transcript.tool-divider": "#4c6fd8",
+                    "transcript.tool-title": "bold #6d8cff",
+                    "transcript.permission-selected": "bold #80a0ff",
                 }
             ),
             input=input,
@@ -820,6 +819,7 @@ class NoteDeskTUI:
 
     def show_permission_request(self, event: PermissionRequestEvent) -> None:
         self.pending_permission = event
+        self.append_transcript(self.render_permission_card(event))
         self.set_status("Waiting for permission")
         self.scroll_transcript_to_bottom()
         try:
@@ -827,18 +827,19 @@ class NoteDeskTUI:
         except RuntimeError:
             pass
 
-    def render_permission_panel(self) -> str:
-        if self.pending_permission is None:
-            return ""
-        event = self.pending_permission
+    def render_permission_card(self, event: PermissionRequestEvent) -> str:
         operation = event.details or "The tool requests permission to continue."
+        if operation.startswith("command: "):
+            operation = operation.removeprefix("command: ")
         return (
-            f"Tool: {event.tool_name}\n"
-            f"{event.summary}\n"
-            f"{operation}\n\n"
+            "────────────────────────────────────────\n"
+            f"{event.tool_name} command\n\n"
+            f"{operation}\n"
+            f"{event.summary}\n\n"
+            "This command requires approval\n\n"
             "Do you want to proceed?\n"
-            "❯ 1. Yes, proceed       Ctrl-Y\n"
-            "  2. No, deny           Ctrl-N\n\n"
+            "❯ 1. Yes, proceed\n"
+            "  2. No, deny\n\n"
             "Esc to cancel · Ctrl-Y approve · Ctrl-N deny"
         )
 
