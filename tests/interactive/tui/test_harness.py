@@ -81,6 +81,26 @@ class PermissionRuntime(AcceptanceRuntime):
             self.approved.set()
 
 
+class FailingPermissionRuntime(AcceptanceRuntime):
+    def __init__(self) -> None:
+        super().__init__()
+        self.blocked = asyncio.Event()
+
+    async def run_once(self, prompt: str):
+        self.submitted.append(prompt)
+        await self.ui_queue.put(
+            PermissionRequestEvent(
+                tool_name="Bash",
+                summary="Permission required for tool action",
+                details="command: gh pr view https://github.com/apache/seatunnel/pull/11841",
+            )
+        )
+        await self.blocked.wait()
+
+    async def resume_permission(self, approved: bool):
+        raise RuntimeError("stream connection lost")
+
+
 def test_tui_harness_drives_real_input_to_streamed_reply(tmp_path: Path) -> None:
     async def scenario() -> None:
         runtime = AcceptanceRuntime()
@@ -131,6 +151,32 @@ def test_tui_harness_drives_claude_style_permission_selection(tmp_path: Path) ->
             assert harness.tui.render_permission_prompt_text() == ""
             assert not harness.tui.input_field.buffer.read_only()
             assert harness.status() == "Stopped: max iterations reached"
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())
+
+
+def test_tui_harness_keeps_application_alive_after_permission_resume_failure(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        runtime = FailingPermissionRuntime()
+        harness = TUIHarness(NoteDeskTUI(tmp_path, tmp_path / "artifacts"), runtime)
+        await harness.start()
+        try:
+            await harness.type_text("Read the PR")
+            await harness.press("enter")
+            await harness.wait_until(
+                lambda: harness.status() == "Waiting for permission"
+            )
+
+            await harness.press("ctrl-y")
+            await harness.wait_until(
+                lambda: harness.status() == "Error: stream connection lost"
+            )
+            assert not harness.tui.input_field.buffer.read_only()
+            assert not harness._run_task.done()
         finally:
             await harness.stop()
 

@@ -52,13 +52,23 @@ class TUISessionController:
                     await asyncio.gather(event_task, return_exceptions=True)
 
                 if run_task in done:
-                    run_task.result()
+                    try:
+                        run_task.result()
+                    except Exception as exc:
+                        self.tui.set_status(f"Error: {self._format_runtime_error(exc)}")
+                        return
                     await self.drain_events()
                     return
         finally:
             if not run_task.done():
                 run_task.cancel()
                 await asyncio.gather(run_task, return_exceptions=True)
+
+    @staticmethod
+    def _format_runtime_error(exc: Exception) -> str:
+        """Return a concise status-bar-safe description of a runtime failure."""
+        detail = str(exc).strip() or type(exc).__name__
+        return detail.splitlines()[0][:160]
 
     async def drain_events(self) -> None:
         while not self.runtime.ui_queue.empty():

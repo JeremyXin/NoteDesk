@@ -175,3 +175,22 @@ def test_tui_session_controller_approves_permission_and_renders_receipt(tmp_path
     assert runtime.approved == 1
     assert "summary.md" not in tui.transcript_field.text
     assert tui.status_text == "Artifact saved"
+
+
+def test_tui_session_controller_surfaces_runtime_failure_without_raising(
+    tmp_path: Path,
+) -> None:
+    class FailingRuntime(FakeRuntime):
+        async def resume_permission(self, approved: bool):
+            raise RuntimeError("stream connection lost")
+
+    tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    runtime = FailingRuntime()
+    controller = TUISessionController(tui, runtime)  # type: ignore[arg-type]
+    tui.show_permission_request(
+        PermissionRequestEvent(tool_name="Bash", summary="Permission required")
+    )
+
+    asyncio.run(controller.approve_permission())
+
+    assert tui.status_text == "Error: stream connection lost"
