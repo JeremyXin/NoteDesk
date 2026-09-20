@@ -26,6 +26,8 @@ class TUIHarness:
         "ctrl-t": "\x14",
         "ctrl-v": "\x16",
         "ctrl-y": "\x19",
+        "up": "\x1b[A",
+        "down": "\x1b[B",
         "page-up": "\x1b[5~",
         "page-down": "\x1b[6~",
         "ctrl-u": "\x15",

@@ -54,19 +54,6 @@ class TranscriptTurnProcessor(Processor):
         # They are separators, not part of the user's highlighted row.
         if not transformation_input.document.lines[transformation_input.lineno].strip():
             return Transformation(transformation_input.fragments)
-        line = transformation_input.document.lines[transformation_input.lineno]
-        if line and set(line) == {"─"}:
-            return Transformation(
-                [("class:transcript.tool-divider", text, *rest) for _, text, *rest in transformation_input.fragments]
-            )
-        if line.endswith(" command"):
-            return Transformation(
-                [("class:transcript.tool-title", text, *rest) for _, text, *rest in transformation_input.fragments]
-            )
-        if line.startswith("❯ 1."):
-            return Transformation(
-                [("class:transcript.permission-selected", text, *rest) for _, text, *rest in transformation_input.fragments]
-            )
         mode = self._message_mode(
             transformation_input.document.lines,
             transformation_input.lineno,
@@ -132,6 +119,7 @@ class NoteDeskTUI:
         self.on_approve_permission: Callable[[], None] = lambda: None
         self.on_deny_permission: Callable[[], None] = lambda: None
         self.pending_permission: PermissionRequestEvent | None = None
+        self._permission_choice = 0
         self.input_history = InMemoryHistory()
         self._input_history_index: int | None = None
 
@@ -346,11 +334,27 @@ class NoteDeskTUI:
             title="NoteDesk",
             height=Dimension(min=11, max=11, preferred=11),
         )
+        self._permission_divider = Window(
+            char="─", height=1, style="class:permission.divider"
+        )
+        permission_prompt = ConditionalContainer(
+            content=HSplit(
+                [
+                    self._permission_divider,
+                    Window(
+                        content=FormattedTextControl(self.render_permission_prompt),
+                        wrap_lines=True,
+                    ),
+                ]
+            ),
+            filter=Condition(lambda: self.pending_permission is not None),
+        )
         main_content = HSplit(
             [
                 welcome_panel_content,
                 self.transcript_field,
                 task_drawer,
+                permission_prompt,
             ],
             align=VerticalAlign.TOP,
         )
@@ -395,9 +399,10 @@ class NoteDeskTUI:
                     "welcome.notice": "",
                     "transcript.user": "bg:#f1f3f5 #111111",
                     "transcript.assistant-label": "bold #808080",
-                    "transcript.tool-divider": "#4c6fd8",
-                    "transcript.tool-title": "bold #6d8cff",
-                    "transcript.permission-selected": "bold #80a0ff",
+                    "permission.divider": "#4c6fd8",
+                    "permission.title": "bold #6d8cff",
+                    "permission.detail": "#808080",
+                    "permission.selected": "bold #80a0ff",
                 }
             ),
             input=input,
@@ -819,7 +824,7 @@ class NoteDeskTUI:
 
     def show_permission_request(self, event: PermissionRequestEvent) -> None:
         self.pending_permission = event
-        self.append_transcript(self.render_permission_card(event))
+        self._permission_choice = 0
         self.set_status("Waiting for permission")
         self.scroll_transcript_to_bottom()
         try:
@@ -827,21 +832,55 @@ class NoteDeskTUI:
         except RuntimeError:
             pass
 
-    def render_permission_card(self, event: PermissionRequestEvent) -> str:
+    def render_permission_prompt_text(self) -> str:
+        if self.pending_permission is None:
+            return ""
+        event = self.pending_permission
         operation = event.details or "The tool requests permission to continue."
         if operation.startswith("command: "):
             operation = operation.removeprefix("command: ")
+        selected_yes = "❯" if self._permission_choice == 0 else " "
+        selected_no = "❯" if self._permission_choice == 1 else " "
         return (
-            "────────────────────────────────────────\n"
             f"{event.tool_name} command\n\n"
-            f"{operation}\n"
-            f"{event.summary}\n\n"
+            f"  {operation}\n"
+            f"  {event.summary}\n\n"
             "This command requires approval\n\n"
             "Do you want to proceed?\n"
-            "❯ 1. Yes, proceed\n"
-            "  2. No, deny\n\n"
+            f"{selected_yes} 1. Yes, proceed\n"
+            f"{selected_no} 2. No, deny\n\n"
             "Esc to cancel · Ctrl-Y approve · Ctrl-N deny"
         )
+
+    def render_permission_prompt(self):
+        if self.pending_permission is None:
+            return []
+        lines = self.render_permission_prompt_text().splitlines(keepends=True)
+        fragments = []
+        for line in lines:
+            if line.startswith(f"{self.pending_permission.tool_name} command"):
+                style = "class:permission.title"
+            elif line.startswith("  "):
+                style = "class:permission.detail"
+            elif line.startswith("❯"):
+                style = "class:permission.selected"
+            elif line.startswith("Esc to cancel"):
+                style = "class:permission.detail"
+            else:
+                style = ""
+            fragments.append((style, line))
+        return fragments
+
+    def move_permission_selection(self, direction: int) -> None:
+        if self.pending_permission is None:
+            return
+        self._permission_choice = (self._permission_choice + direction) % 2
+
+    def handle_permission_selection(self) -> None:
+        if self._permission_choice == 0:
+            self.handle_approve_permission()
+        else:
+            self.handle_deny_permission()
 
     def show_artifact_receipt(self, receipt: ArtifactReceipt) -> None:
         self.set_status("Artifact saved")
@@ -851,6 +890,7 @@ class NoteDeskTUI:
             return
         self.on_approve_permission()
         self.pending_permission = None
+        self._permission_choice = 0
         self.set_status("Permission approved")
 
     def handle_deny_permission(self) -> None:
@@ -858,6 +898,7 @@ class NoteDeskTUI:
             return
         self.on_deny_permission()
         self.pending_permission = None
+        self._permission_choice = 0
         self.set_status("Permission denied")
 
     def _build_key_bindings(self) -> KeyBindings:
@@ -879,7 +920,10 @@ class NoteDeskTUI:
 
         @kb.add("enter", filter=has_focus(self.input_field))
         def _submit(event) -> None:
-            self.handle_submit()
+            if self.pending_permission is not None:
+                self.handle_permission_selection()
+            else:
+                self.handle_submit()
             event.app.invalidate()
 
         @kb.add("escape")
@@ -949,6 +993,24 @@ class NoteDeskTUI:
         @kb.add("c-n")
         def _deny(event) -> None:
             self.handle_deny_permission()
+            event.app.invalidate()
+
+        @kb.add(
+            "up",
+            filter=Condition(lambda: self.pending_permission is not None),
+            eager=True,
+        )
+        def _permission_up(event) -> None:
+            self.move_permission_selection(-1)
+            event.app.invalidate()
+
+        @kb.add(
+            "down",
+            filter=Condition(lambda: self.pending_permission is not None),
+            eager=True,
+        )
+        def _permission_down(event) -> None:
+            self.move_permission_selection(1)
             event.app.invalidate()
 
         @kb.add("c-t")
