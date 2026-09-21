@@ -361,7 +361,7 @@ class NoteDeskTUI:
         self._permission_divider = Window(
             char="─", height=1, style="class:permission.divider"
         )
-        permission_prompt = ConditionalContainer(
+        self._permission_dock = ConditionalContainer(
             content=HSplit(
                 [
                     self._permission_divider,
@@ -373,39 +373,45 @@ class NoteDeskTUI:
             ),
             filter=Condition(lambda: self.pending_permission is not None),
         )
-        main_content = HSplit(
+        self._scrollable_content = HSplit(
             [
                 welcome_panel_content,
                 self.transcript_field,
                 task_drawer,
-                permission_prompt,
             ],
             align=VerticalAlign.TOP,
         )
         self._transcript_scroll_pane = ScrollablePane(
-            content=main_content,
+            content=self._scrollable_content,
             keep_cursor_visible=False,
             keep_focused_window_visible=False,
             show_scrollbar=False,
             display_arrows=False,
             height=Dimension(weight=1),
         )
-        bottom_dock = HSplit(
-            [
-                Window(char="-", height=1),
-                self.input_field,
-                Window(char="-", height=1),
-                Window(
-                    content=FormattedTextControl(self.render_status_bar),
-                    height=1,
-                    wrap_lines=False,
-                ),
-            ],
-            height=Dimension(min=3, max=6, preferred=3),
-            align=VerticalAlign.TOP,
+        self._normal_input_dock = ConditionalContainer(
+            content=HSplit(
+                [
+                    Window(char="-", height=1),
+                    self.input_field,
+                    Window(char="-", height=1),
+                    Window(
+                        content=FormattedTextControl(self.render_status_bar),
+                        height=1,
+                        wrap_lines=False,
+                    ),
+                ],
+                height=Dimension(min=3, max=6, preferred=3),
+                align=VerticalAlign.TOP,
+            ),
+            filter=Condition(lambda: self.pending_permission is None),
         )
         root = HSplit(
-            [self._transcript_scroll_pane, bottom_dock],
+            [
+                self._transcript_scroll_pane,
+                self._normal_input_dock,
+                self._permission_dock,
+            ],
             align=VerticalAlign.JUSTIFY,
         )
         return Application(
@@ -873,7 +879,7 @@ class NoteDeskTUI:
             "Do you want to proceed?\n"
             f"{selected_yes} 1. Yes, proceed\n"
             f"{selected_no} 2. No, deny\n\n"
-            "Esc to cancel · Ctrl-Y approve · Ctrl-N deny"
+            "Enter to select · ↑/↓ to navigate · Esc to cancel"
         )
 
     def render_permission_prompt(self):
@@ -888,7 +894,7 @@ class NoteDeskTUI:
                 style = "class:permission.detail"
             elif line.startswith("❯"):
                 style = "class:permission.selected"
-            elif line.startswith("Esc to cancel"):
+            elif line.startswith("Enter to select"):
                 style = "class:permission.detail"
             else:
                 style = ""
@@ -916,6 +922,7 @@ class NoteDeskTUI:
         self.pending_permission = None
         self._permission_choice = 0
         self.set_status("Permission approved")
+        self._restore_input_focus()
 
     def handle_deny_permission(self) -> None:
         if self.pending_permission is None:
@@ -924,6 +931,13 @@ class NoteDeskTUI:
         self.pending_permission = None
         self._permission_choice = 0
         self.set_status("Permission denied")
+        self._restore_input_focus()
+
+    def _restore_input_focus(self) -> None:
+        try:
+            get_app().layout.focus(self.input_field)
+        except (AttributeError, RuntimeError, ValueError):
+            pass
 
     def _build_key_bindings(self) -> KeyBindings:
         kb = KeyBindings()
