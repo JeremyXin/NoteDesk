@@ -186,6 +186,48 @@ def test_tui_harness_drives_claude_style_permission_selection(tmp_path: Path) ->
     asyncio.run(scenario())
 
 
+def test_tui_harness_keeps_transcript_tail_visible_when_permission_dock_opens(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+        harness = TUIHarness(
+            tui,
+            AcceptanceRuntime(),
+            output=ScreenshotSizedOutput(),
+        )
+        final_marker = "TRANSCRIPT-TAIL-MARKER"
+
+        await harness.start()
+        try:
+            tui.append_transcript_delta(
+                "\n".join(
+                    [f"{index}. 已完成的回复内容。" for index in range(35)]
+                    + [final_marker]
+                )
+            )
+            await harness.wait_until(
+                lambda: final_marker in _rendered_screen_text(harness)
+            )
+
+            tui.show_permission_request(
+                PermissionRequestEvent(
+                    tool_name="Bash",
+                    summary="Permission required for tool action",
+                    details="command: inspect the current artifact",
+                )
+            )
+            await harness.wait_until(
+                lambda: "Bash command" in _rendered_screen_text(harness)
+            )
+
+            assert final_marker in _rendered_screen_text(harness)
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())
+
+
 def test_tui_harness_keeps_application_alive_after_permission_resume_failure(
     tmp_path: Path,
 ) -> None:
