@@ -9,7 +9,7 @@ from prompt_toolkit.key_binding.key_processor import KeyPress
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType, Point
 from prompt_toolkit.layout import VerticalAlign, WindowAlign
-from prompt_toolkit.layout.containers import HSplit, VSplit
+from prompt_toolkit.layout.containers import ConditionalContainer, HSplit, VSplit
 from prompt_toolkit.layout.scrollable_pane import ScrollablePane
 from prompt_toolkit.output import DummyOutput
 
@@ -156,7 +156,7 @@ def test_tui_builds_prompt_toolkit_application(tmp_path: Path) -> None:
     assert application.erase_when_done is True
     assert application.layout.container.align == VerticalAlign.JUSTIFY
     assert app.transcript_field.window.height.weight == 1
-    bottom_dock = application.layout.container.children[-1]
+    bottom_dock = app._normal_input_dock.content
     assert isinstance(bottom_dock, HSplit)
     assert bottom_dock.height.preferred == 3
     assert app.input_field is not None
@@ -867,7 +867,7 @@ def test_tui_renders_temporary_permission_component_and_artifact_messages(tmp_pa
     prompt = app.render_permission_prompt_text()
     assert "Bash command" in prompt
     assert "Permission required for tool action" in prompt
-    assert "Ctrl-Y approve · Ctrl-N deny" in prompt
+    assert "Enter to select · ↑/↓ to navigate · Esc to cancel" in prompt
     assert "Bash command" not in app.transcript_field.text
     assert "summary.md" not in app.transcript_field.text
     assert app.status_text == "Artifact saved"
@@ -897,6 +897,28 @@ def test_tui_permission_prompt_shows_requested_operation(tmp_path: Path) -> None
     assert "gh pr view https://github.com/apache/seatunnel/pull/11841" in prompt
     assert "❯ 1. Yes, proceed" in prompt
     assert "2. No, deny" in prompt
+
+
+def test_tui_places_pending_permission_in_bottom_dock(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    app.show_permission_request(
+        PermissionRequestEvent(
+            tool_name="Bash",
+            summary="Permission required for tool action",
+        )
+    )
+
+    application = app.build_application(output=DummyOutput())
+
+    assert len(app._scrollable_content.children) == 3
+    assert all(
+        child is not app._permission_dock
+        for child in app._scrollable_content.children
+    )
+    assert isinstance(app._normal_input_dock, ConditionalContainer)
+    assert app._normal_input_dock.filter() is False
+    assert app._permission_dock.filter() is True
+    assert application is not None
 
 
 def test_tui_ctrl_c_requests_exit_when_input_is_empty(tmp_path: Path) -> None:

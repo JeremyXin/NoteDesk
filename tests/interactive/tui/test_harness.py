@@ -157,6 +157,13 @@ def test_tui_harness_drives_claude_style_permission_selection(tmp_path: Path) ->
             assert "Bash command" not in harness.transcript()
             assert "❯ 1. Yes, proceed" in harness.tui.render_permission_prompt_text()
             assert harness.tui.input_field.buffer.read_only()
+            await harness.wait_until(
+                lambda: "Bash command" in _rendered_screen_text(harness)
+            )
+            pending_frame = _rendered_screen_text(harness)
+            assert "Bash command" in pending_frame
+            assert "Enter to select · ↑/↓ to navigate · Esc to cancel" in pending_frame
+            assert "Waiting for permission · Tasks closed · Enter send" not in pending_frame
 
             await harness.press("down")
             await harness.wait_until(
@@ -171,6 +178,7 @@ def test_tui_harness_drives_claude_style_permission_selection(tmp_path: Path) ->
             assert harness.tui.pending_permission is None
             assert harness.tui.render_permission_prompt_text() == ""
             assert not harness.tui.input_field.buffer.read_only()
+            assert "> " in _rendered_screen_text(harness)
             assert harness.status() == "Stopped: max iterations reached"
         finally:
             await harness.stop()
