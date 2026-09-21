@@ -101,6 +101,24 @@ class TranscriptTurnProcessor(Processor):
         return styled
 
 
+class TranscriptWindow(Window):
+    """Reserve the wrapped tail rows omitted by ScrollablePane's size probe."""
+
+    _WRAPPED_TAIL_GUARD_ROWS = 2
+
+    def preferred_height(self, width: int, max_available_height: int) -> Dimension:
+        dimension = super().preferred_height(width, max_available_height)
+        return Dimension(
+            min=dimension.min,
+            max=dimension.max,
+            preferred=min(
+                dimension.max,
+                dimension.preferred + self._WRAPPED_TAIL_GUARD_ROWS,
+            ),
+            weight=dimension.weight,
+        )
+
+
 class NoteDeskTUI:
     def __init__(self, workspace: Path, artifact_root: Path) -> None:
         self.workspace = workspace
@@ -131,6 +149,12 @@ class NoteDeskTUI:
             focus_on_click=True,
             height=Dimension(weight=1),
             input_processors=[TranscriptTurnProcessor()],
+        )
+        self.transcript_field.window = TranscriptWindow(
+            content=self.transcript_field.control,
+            height=Dimension(weight=1),
+            style="class:text-area ",
+            wrap_lines=True,
         )
         self.input_field = TextArea(
             text="",

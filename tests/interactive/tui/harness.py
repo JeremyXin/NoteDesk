@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from prompt_toolkit.input import create_pipe_input
-from prompt_toolkit.output import DummyOutput
+from prompt_toolkit.output import DummyOutput, Output
 
 from notedesk.interactive.tui.app import NoteDeskTUI
 from notedesk.interactive.tui.runner import TUISessionController
@@ -34,14 +34,20 @@ class TUIHarness:
         "ctrl-d": "\x04",
     }
 
-    def __init__(self, tui: NoteDeskTUI, runtime: Any) -> None:
+    def __init__(
+        self,
+        tui: NoteDeskTUI,
+        runtime: Any,
+        *,
+        output: Output | None = None,
+    ) -> None:
         self.tui = tui
         self.runtime = runtime
         self._pipe_input_context = create_pipe_input()
         self._pipe_input = self._pipe_input_context.__enter__()
         self.application = tui.build_application(
             input=self._pipe_input,
-            output=DummyOutput(),
+            output=output if output is not None else DummyOutput(),
         )
         self.controller = TUISessionController(tui=tui, runtime=runtime)
         self._run_task: asyncio.Task | None = None

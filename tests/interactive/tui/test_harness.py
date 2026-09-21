@@ -1,6 +1,9 @@
 import asyncio
 from pathlib import Path
 
+from prompt_toolkit.data_structures import Size
+from prompt_toolkit.output import DummyOutput
+
 from notedesk.agent.events import (
     PermissionRequestEvent,
     ReplyLifecycleEvent,
@@ -101,6 +104,24 @@ class FailingPermissionRuntime(AcceptanceRuntime):
         raise RuntimeError("stream connection lost")
 
 
+class ScreenshotSizedOutput(DummyOutput):
+    """Approximate the rows and columns of the reported terminal screenshot."""
+
+    def get_size(self) -> Size:
+        return Size(rows=27, columns=200)
+
+    def get_rows_below_cursor_position(self) -> int:
+        return 27
+
+
+def _rendered_screen_text(harness: TUIHarness) -> str:
+    screen = harness.application.renderer.last_rendered_screen
+    return "\n".join(
+        "".join(cell.char for cell in row.values())
+        for row in screen.data_buffer.values()
+    )
+
+
 def test_tui_harness_drives_real_input_to_streamed_reply(tmp_path: Path) -> None:
     async def scenario() -> None:
         runtime = AcceptanceRuntime()
@@ -177,6 +198,42 @@ def test_tui_harness_keeps_application_alive_after_permission_resume_failure(
             )
             assert not harness.tui.input_field.buffer.read_only()
             assert not harness._run_task.done()
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())
+
+
+def test_tui_harness_shows_wrapped_final_paragraph_at_transcript_bottom(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+        harness = TUIHarness(
+            tui,
+            AcceptanceRuntime(),
+            output=ScreenshotSizedOutput(),
+        )
+        final_marker = "FINAL-MARKER"
+        final_paragraph = (
+            f"{final_marker} 本地无 Flink CDC 仓库与 Maven 制品（CDC 在独立仓库），"
+            "故 CDC 侧细节基于既有笔记与官方文档；Flink 侧框架契约已逐文件核对源码。"
+            "若需要，我可以补一份可编译的最小 Demo 工程（Java 8 + Maven 已就绪）。"
+        )
+        reply = "\n\n".join(
+            [f"{index}. 前置内容用于填充视口。" for index in range(23)]
+            + ["## 说明", "", final_paragraph]
+        )
+
+        await harness.start()
+        try:
+            tui.append_transcript_delta(reply)
+            await harness.wait_until(
+                lambda: final_marker in harness.transcript()
+            )
+            await asyncio.sleep(0.02)
+
+            assert final_marker in _rendered_screen_text(harness)
         finally:
             await harness.stop()
 
