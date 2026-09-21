@@ -368,8 +368,10 @@ class NoteDeskTUI:
                     Window(
                         content=FormattedTextControl(self.render_permission_prompt),
                         wrap_lines=True,
+                        dont_extend_height=True,
                     ),
-                ]
+                ],
+                align=VerticalAlign.JUSTIFY,
             ),
             filter=Condition(lambda: self.pending_permission is not None),
         )
@@ -856,11 +858,39 @@ class NoteDeskTUI:
         self.pending_permission = event
         self._permission_choice = 0
         self.set_status("Waiting for permission")
-        self.scroll_transcript_to_bottom()
+        self._scroll_transcript_to_bottom_after_dock_change()
         try:
             get_app().invalidate()
         except RuntimeError:
             pass
+
+    def _scroll_transcript_to_bottom_after_dock_change(self) -> None:
+        """Recalculate the history viewport after replacing the input Dock."""
+        if self._transcript_scroll_pane is None:
+            self.scroll_transcript_to_bottom()
+            return
+        try:
+            application = get_app()
+            if not application.is_running:
+                self.scroll_transcript_to_bottom()
+                return
+            size = application.output.get_size()
+            dock_height = self._permission_dock.preferred_height(
+                size.columns,
+                size.rows,
+            ).preferred
+            content_height = self._transcript_scroll_pane.content.preferred_height(
+                size.columns,
+                self._transcript_scroll_pane.max_available_height,
+            ).preferred
+            viewport_height = max(1, size.rows - dock_height)
+            self._transcript_scroll_pane.vertical_scroll = max(
+                0,
+                content_height - viewport_height,
+            )
+            self._transcript_follow_bottom = True
+        except (AttributeError, RuntimeError):
+            self.scroll_transcript_to_bottom()
 
     def render_permission_prompt_text(self) -> str:
         if self.pending_permission is None:
