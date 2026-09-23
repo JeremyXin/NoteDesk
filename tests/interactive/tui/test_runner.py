@@ -125,7 +125,7 @@ def test_tui_session_controller_renders_streaming_deltas_before_run_finishes(
     asyncio.run(scenario())
 
 
-def test_tui_session_controller_keeps_tool_lifecycle_out_of_transcript(
+def test_tui_session_controller_renders_tool_call_as_transcript_progress(
     tmp_path: Path,
 ) -> None:
     tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
@@ -141,7 +141,31 @@ def test_tui_session_controller_keeps_tool_lifecycle_out_of_transcript(
     )
 
     assert tui.status_text == "Tool: Running tool"
-    assert "Tool: Running tool" not in tui.transcript_field.text
+    assert "• Running Bash…" in tui.transcript_field.text
+    assert "Running tool" in tui.transcript_field.text
+
+
+def test_tui_session_controller_separates_tool_progress_from_final_reply(
+    tmp_path: Path,
+) -> None:
+    tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+    controller = TUISessionController(tui, FakeRuntime())  # type: ignore[arg-type]
+
+    controller._apply_event(ReplyLifecycleEvent(phase="start", reply_id="r1"))
+    controller._apply_event(TextDeltaEvent(delta="Checking local notes."))
+    controller._apply_event(
+        ToolLifecycleEvent(
+            phase="call_start",
+            tool_name="Bash",
+            summary="Searching artifacts",
+        )
+    )
+    controller._apply_event(TextDeltaEvent(delta="## Result"))
+    controller._apply_event(ReplyLifecycleEvent(phase="end", reply_id="r1"))
+
+    assert "• Checking local notes." in tui.transcript_field.text
+    assert "• Running Bash…" in tui.transcript_field.text
+    assert "NoteDesk > ## Result" in tui.transcript_field.text
 
 
 def test_tui_session_controller_surfaces_max_iteration_end_reason(

@@ -77,11 +77,13 @@ class TUISessionController:
 
     def _apply_event(self, event: object) -> None:
         if isinstance(event, TextDeltaEvent):
-            self.tui.append_transcript_delta(event.delta)
+            self.tui.append_reply_delta(event.delta)
         elif isinstance(event, ToolLifecycleEvent):
-            # Tool lifecycle events are high-frequency progress notifications.
-            # Keep them in the pinned status bar instead of permanently adding
-            # one transcript row for every call/result transition.
+            # A call start proves that preceding text was interim progress.
+            # Result phases remain status-only to avoid three history rows per
+            # tool invocation.
+            if event.phase == "call_start":
+                self.tui.record_tool_call(event.tool_name, event.summary)
             self.tui.set_status(f"Tool: {event.summary}")
         elif isinstance(event, PermissionRequestEvent):
             self.tui.show_permission_request(event)
@@ -89,10 +91,13 @@ class TUISessionController:
             self.tui.update_task_snapshot(event.snapshot)
         elif isinstance(event, ReplyLifecycleEvent):
             if event.phase == "start":
+                self.tui.start_reply(event.reply_id)
                 self.tui.set_status("Running")
-            elif event.finished_reason == "exceed_max_iters":
-                self.tui.set_status("Stopped: max iterations reached")
             else:
-                self.tui.set_status("Idle")
+                self.tui.finish_reply(event.reply_id)
+                if event.finished_reason == "exceed_max_iters":
+                    self.tui.set_status("Stopped: max iterations reached")
+                else:
+                    self.tui.set_status("Idle")
         elif isinstance(event, ArtifactReceipt):
             self.tui.show_artifact_receipt(event)
