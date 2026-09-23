@@ -9,6 +9,7 @@ from notedesk.agent.events import (
     ReplyLifecycleEvent,
     TaskSnapshotEvent,
     TextDeltaEvent,
+    ToolLifecycleEvent,
 )
 from notedesk.agent.middleware import TaskSnapshot, TaskSnapshotItem
 from notedesk.interactive.tui.app import NoteDeskTUI
@@ -104,6 +105,38 @@ class FailingPermissionRuntime(AcceptanceRuntime):
         raise RuntimeError("stream connection lost")
 
 
+class ProgressBlockPermissionRuntime(AcceptanceRuntime):
+    def __init__(self) -> None:
+        super().__init__()
+        self.approved = asyncio.Event()
+
+    async def run_once(self, prompt: str):
+        self.submitted.append(prompt)
+        await self.ui_queue.put(ReplyLifecycleEvent(phase="start", reply_id="r1"))
+        await self.ui_queue.put(TextDeltaEvent(delta="Checking local notes."))
+        await self.ui_queue.put(
+            ToolLifecycleEvent(
+                phase="call_start",
+                tool_name="Bash",
+                summary="Searching artifacts",
+            )
+        )
+        await self.ui_queue.put(
+            PermissionRequestEvent(
+                tool_name="Bash",
+                summary="Permission required for tool action",
+                details="command: ls .notedesk/artifacts",
+            )
+        )
+        await self.approved.wait()
+        await self.ui_queue.put(TextDeltaEvent(delta="## Result\nReady"))
+        await self.ui_queue.put(ReplyLifecycleEvent(phase="end", reply_id="r1"))
+
+    async def resume_permission(self, approved: bool):
+        if approved:
+            self.approved.set()
+
+
 class ScreenshotSizedOutput(DummyOutput):
     """Approximate the rows and columns of the reported terminal screenshot."""
 
@@ -180,6 +213,37 @@ def test_tui_harness_drives_claude_style_permission_selection(tmp_path: Path) ->
             assert not harness.tui.input_field.buffer.read_only()
             assert "> " in _rendered_screen_text(harness)
             assert harness.status() == "Stopped: max iterations reached"
+        finally:
+            await harness.stop()
+
+    asyncio.run(scenario())
+
+
+def test_tui_harness_renders_progress_blocks_before_the_final_reply(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        runtime = ProgressBlockPermissionRuntime()
+        harness = TUIHarness(NoteDeskTUI(tmp_path, tmp_path / "artifacts"), runtime)
+        await harness.start()
+        try:
+            await harness.type_text("Inspect notes")
+            await harness.press("enter")
+            await harness.wait_until(
+                lambda: "Bash command" in _rendered_screen_text(harness)
+            )
+
+            assert "• Checking local notes." in harness.transcript()
+            assert "• Running Bash…" in harness.transcript()
+            assert "NoteDesk > Checking local notes." not in harness.transcript()
+            assert harness.tui.input_field.buffer.read_only()
+
+            await harness.press("enter")
+            await harness.wait_until(lambda: "## Result" in harness.transcript())
+
+            assert "NoteDesk > ## Result" in harness.transcript()
+            assert harness.tui.pending_permission is None
+            assert not harness.tui.input_field.buffer.read_only()
         finally:
             await harness.stop()
 

@@ -127,6 +127,8 @@ class NoteDeskTUI:
         self.status_text = "Idle"
         self._transcript_line_boundary = False
         self._transcript_turn_boundary = False
+        self._active_reply_id: str | None = None
+        self._pending_reply_start: int | None = None
         self._transcript_follow_bottom = True
         self._kitty_keyboard_enabled = False
         self._ctrl_c_exit_pending = False
@@ -702,6 +704,60 @@ class NoteDeskTUI:
             text += "NoteDesk > "
         self._set_transcript_text(f"{text}{delta}")
         self._transcript_line_boundary = False
+        self._transcript_turn_boundary = False
+
+    def start_reply(self, reply_id: str) -> None:
+        """Start a reply whose last text segment is provisionally final."""
+        self._active_reply_id = reply_id
+        self._pending_reply_start = None
+
+    def append_reply_delta(self, delta: str) -> None:
+        """Append a text delta and remember where its current segment begins."""
+        if not delta:
+            return
+        if self._active_reply_id is None:
+            self.append_transcript_delta(delta)
+            return
+        if self._pending_reply_start is None:
+            self._pending_reply_start = self._reply_segment_start()
+        self.append_transcript_delta(delta)
+
+    def record_tool_call(self, tool_name: str, summary: str) -> None:
+        """Promote preceding text only after an observed tool call proves it interim."""
+        self._promote_pending_reply_to_progress()
+        tool_block = f"• Running {tool_name}…"
+        if summary.strip():
+            tool_block += f"\n  {summary.strip()}"
+        self.append_transcript(tool_block)
+
+    def finish_reply(self, reply_id: str) -> None:
+        """Keep the final pending text as the formal assistant reply."""
+        if reply_id != self._active_reply_id:
+            return
+        self._active_reply_id = None
+        self._pending_reply_start = None
+        self._transcript_line_boundary = True
+        self._transcript_turn_boundary = False
+
+    def _reply_segment_start(self) -> int:
+        # Keep the separator and ``NoteDesk >`` label inside the replaceable
+        # range: a later tool call turns this whole provisional reply into a
+        # standalone progress block instead of leaving an assistant label.
+        return len(self.transcript_field.text)
+
+    def _promote_pending_reply_to_progress(self) -> None:
+        if self._pending_reply_start is None:
+            return
+        text = self.transcript_field.text
+        progress_text = text[self._pending_reply_start :].strip()
+        if progress_text.startswith(TranscriptTurnProcessor.ASSISTANT_PREFIX):
+            progress_text = progress_text[len(TranscriptTurnProcessor.ASSISTANT_PREFIX) :]
+        prefix = text[: self._pending_reply_start]
+        separator = "\n\n" if prefix and not prefix.endswith("\n") else ""
+        replacement = f"{separator}• {progress_text}" if progress_text else ""
+        self._set_transcript_text(f"{prefix}{replacement}")
+        self._pending_reply_start = None
+        self._transcript_line_boundary = True
         self._transcript_turn_boundary = False
 
     def _set_transcript_text(self, text: str) -> None:

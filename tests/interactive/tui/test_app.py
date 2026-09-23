@@ -302,6 +302,33 @@ def test_tui_appends_transcript_and_updates_status(tmp_path: Path) -> None:
     assert "Running" in app.render_status_bar()
 
 
+def test_tui_promotes_pre_tool_text_to_a_progress_block(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+
+    app.start_reply("r1")
+    app.append_reply_delta("Checking local notes.")
+    app.record_tool_call("Bash", "Searching artifacts")
+    app.append_reply_delta("## Result\nReady")
+    app.finish_reply("r1")
+
+    assert "• Checking local notes." in app.transcript_field.text
+    assert "• Running Bash…" in app.transcript_field.text
+    assert "Searching artifacts" in app.transcript_field.text
+    assert "NoteDesk > ## Result" in app.transcript_field.text
+    assert app.transcript_field.text.count("Checking local notes.") == 1
+
+
+def test_tui_keeps_a_reply_without_tools_as_a_formal_reply(tmp_path: Path) -> None:
+    app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+
+    app.start_reply("r1")
+    app.append_reply_delta("## Answer\nNo tool was needed.")
+    app.finish_reply("r1")
+
+    assert "NoteDesk > ## Answer" in app.transcript_field.text
+    assert "• ## Answer" not in app.transcript_field.text
+
+
 def test_tui_keeps_transcript_cursor_at_end_after_append(tmp_path: Path) -> None:
     app = NoteDeskTUI(
         workspace=tmp_path,
