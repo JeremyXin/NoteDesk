@@ -302,20 +302,47 @@ def test_tui_appends_transcript_and_updates_status(tmp_path: Path) -> None:
     assert "Running" in app.render_status_bar()
 
 
-def test_tui_promotes_pre_tool_text_to_a_progress_block(tmp_path: Path) -> None:
+def test_tui_promotes_pre_tool_text_without_recording_tool_steps(tmp_path: Path) -> None:
     app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
 
     app.start_reply("r1")
     app.append_reply_delta("Checking local notes.")
-    app.record_tool_call("Bash", "Searching artifacts")
+    app.mark_tool_call()
+    app.mark_tool_call()
     app.append_reply_delta("## Result\nReady")
     app.finish_reply("r1")
 
     assert "• Checking local notes." in app.transcript_field.text
-    assert "• Running Bash…" in app.transcript_field.text
-    assert "Searching artifacts" in app.transcript_field.text
+    assert "Running Bash" not in app.transcript_field.text
+    assert "Running tool" not in app.transcript_field.text
     assert "NoteDesk > ## Result" in app.transcript_field.text
     assert app.transcript_field.text.count("Checking local notes.") == 1
+
+
+def test_tui_styles_progress_after_user_turn_without_user_background(
+    tmp_path: Path,
+) -> None:
+    async def render_progress_line():
+        app = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
+        with create_pipe_input() as pipe_input:
+            application = app.build_application(
+                input=pipe_input, output=DummyOutput()
+            )
+            app.append_transcript("You  > inspect notes", user_turn=True)
+            app.start_reply("r1")
+            app.append_reply_delta("Checking local notes.")
+            app.mark_tool_call()
+            with set_app(application):
+                content = app.transcript_field.control.create_content(80, 10)
+                return next(
+                    content.get_line(index)
+                    for index, line in enumerate(app.transcript_field.text.splitlines())
+                    if line.startswith("• Checking local notes.")
+                )
+
+    progress_line = asyncio.run(render_progress_line())
+
+    assert all("transcript.user" not in style for style, *_ in progress_line)
 
 
 def test_tui_keeps_a_reply_without_tools_as_a_formal_reply(tmp_path: Path) -> None:

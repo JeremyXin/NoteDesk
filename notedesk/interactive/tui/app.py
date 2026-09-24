@@ -45,6 +45,7 @@ class TranscriptTurnProcessor(Processor):
 
     USER_PREFIX = "You  > "
     ASSISTANT_PREFIX = "NoteDesk > "
+    PROGRESS_PREFIX = "• "
 
     def apply_transformation(
         self,
@@ -73,7 +74,7 @@ class TranscriptTurnProcessor(Processor):
         for line in lines[: lineno + 1]:
             if line.startswith(self.USER_PREFIX):
                 mode = "user"
-            elif line.startswith(self.ASSISTANT_PREFIX):
+            elif line.startswith((self.ASSISTANT_PREFIX, self.PROGRESS_PREFIX)):
                 mode = "assistant"
         return mode
 
@@ -722,13 +723,9 @@ class NoteDeskTUI:
             self._pending_reply_start = self._reply_segment_start()
         self.append_transcript_delta(delta)
 
-    def record_tool_call(self, tool_name: str, summary: str) -> None:
-        """Promote preceding text only after an observed tool call proves it interim."""
+    def mark_tool_call(self) -> None:
+        """Promote preceding text when an observed tool call proves it interim."""
         self._promote_pending_reply_to_progress()
-        tool_block = f"• Running {tool_name}…"
-        if summary.strip():
-            tool_block += f"\n  {summary.strip()}"
-        self.append_transcript(tool_block)
 
     def finish_reply(self, reply_id: str) -> None:
         """Keep the final pending text as the formal assistant reply."""

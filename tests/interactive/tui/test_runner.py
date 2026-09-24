@@ -125,24 +125,35 @@ def test_tui_session_controller_renders_streaming_deltas_before_run_finishes(
     asyncio.run(scenario())
 
 
-def test_tui_session_controller_renders_tool_call_as_transcript_progress(
+def test_tui_session_controller_aggregates_tool_calls_without_history_rows(
     tmp_path: Path,
 ) -> None:
     tui = NoteDeskTUI(tmp_path, tmp_path / "artifacts")
     runtime = FakeRuntime()
     controller = TUISessionController(tui, runtime)  # type: ignore[arg-type]
 
+    controller._apply_event(ReplyLifecycleEvent(phase="start", reply_id="r1"))
+    for phase in ("call_start", "result_start", "result_end", "call_start"):
+        controller._apply_event(
+            ToolLifecycleEvent(
+                phase=phase,
+                tool_name="Bash",
+                summary="Running tool",
+            )
+        )
+
+    assert tui.status_text == "Working · 2 tool actions"
+    assert "Running Bash" not in tui.transcript_field.text
+    assert "Running tool" not in tui.transcript_field.text
+
+    controller._apply_event(ReplyLifecycleEvent(phase="end", reply_id="r1"))
+    controller._apply_event(ReplyLifecycleEvent(phase="start", reply_id="r2"))
     controller._apply_event(
         ToolLifecycleEvent(
-            phase="call_start",
-            tool_name="Bash",
-            summary="Running tool",
+            phase="call_start", tool_name="Bash", summary="Running tool"
         )
     )
-
-    assert tui.status_text == "Tool: Running tool"
-    assert "• Running Bash…" in tui.transcript_field.text
-    assert "Running tool" in tui.transcript_field.text
+    assert tui.status_text == "Working · 1 tool action"
 
 
 def test_tui_session_controller_separates_tool_progress_from_final_reply(
@@ -164,7 +175,7 @@ def test_tui_session_controller_separates_tool_progress_from_final_reply(
     controller._apply_event(ReplyLifecycleEvent(phase="end", reply_id="r1"))
 
     assert "• Checking local notes." in tui.transcript_field.text
-    assert "• Running Bash…" in tui.transcript_field.text
+    assert "Running Bash" not in tui.transcript_field.text
     assert "NoteDesk > ## Result" in tui.transcript_field.text
 
 

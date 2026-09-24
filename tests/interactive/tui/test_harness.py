@@ -108,6 +108,7 @@ class FailingPermissionRuntime(AcceptanceRuntime):
 class ProgressBlockPermissionRuntime(AcceptanceRuntime):
     def __init__(self) -> None:
         super().__init__()
+        self.allow_permission = asyncio.Event()
         self.approved = asyncio.Event()
 
     async def run_once(self, prompt: str):
@@ -121,6 +122,7 @@ class ProgressBlockPermissionRuntime(AcceptanceRuntime):
                 summary="Searching artifacts",
             )
         )
+        await self.allow_permission.wait()
         await self.ui_queue.put(
             PermissionRequestEvent(
                 tool_name="Bash",
@@ -229,12 +231,20 @@ def test_tui_harness_renders_progress_blocks_before_the_final_reply(
         try:
             await harness.type_text("Inspect notes")
             await harness.press("enter")
+            await harness.wait_until(lambda: harness.status() == "Working · 1 tool action")
+            await harness.wait_until(
+                lambda: "Working · 1 tool action" in _rendered_screen_text(harness)
+            )
+            assert "Running Bash" not in _rendered_screen_text(harness)
+
+            runtime.allow_permission.set()
             await harness.wait_until(
                 lambda: "Bash command" in _rendered_screen_text(harness)
             )
 
             assert "• Checking local notes." in harness.transcript()
-            assert "• Running Bash…" in harness.transcript()
+            assert "Running Bash" not in harness.transcript()
+            assert "Searching artifacts" not in harness.transcript()
             assert "NoteDesk > Checking local notes." not in harness.transcript()
             assert harness.tui.input_field.buffer.read_only()
 
@@ -242,6 +252,9 @@ def test_tui_harness_renders_progress_blocks_before_the_final_reply(
             await harness.wait_until(lambda: "## Result" in harness.transcript())
 
             assert "NoteDesk > ## Result" in harness.transcript()
+            await harness.wait_until(
+                lambda: "## Result" in _rendered_screen_text(harness)
+            )
             assert harness.tui.pending_permission is None
             assert not harness.tui.input_field.buffer.read_only()
         finally:

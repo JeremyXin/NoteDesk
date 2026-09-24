@@ -18,6 +18,7 @@ class TUISessionController:
     def __init__(self, tui: NoteDeskTUI, runtime: AgentSessionRuntime) -> None:
         self.tui = tui
         self.runtime = runtime
+        self._tool_action_count = 0
 
     async def submit_prompt(self, prompt: str) -> None:
         self.tui.set_status("Running")
@@ -79,18 +80,20 @@ class TUISessionController:
         if isinstance(event, TextDeltaEvent):
             self.tui.append_reply_delta(event.delta)
         elif isinstance(event, ToolLifecycleEvent):
-            # A call start proves that preceding text was interim progress.
-            # Result phases remain status-only to avoid three history rows per
-            # tool invocation.
             if event.phase == "call_start":
-                self.tui.record_tool_call(event.tool_name, event.summary)
-            self.tui.set_status(f"Tool: {event.summary}")
+                self.tui.mark_tool_call()
+                self._tool_action_count += 1
+            if self.tui.pending_permission is None and self._tool_action_count:
+                count = self._tool_action_count
+                noun = "tool action" if count == 1 else "tool actions"
+                self.tui.set_status(f"Working · {count} {noun}")
         elif isinstance(event, PermissionRequestEvent):
             self.tui.show_permission_request(event)
         elif isinstance(event, TaskSnapshotEvent):
             self.tui.update_task_snapshot(event.snapshot)
         elif isinstance(event, ReplyLifecycleEvent):
             if event.phase == "start":
+                self._tool_action_count = 0
                 self.tui.start_reply(event.reply_id)
                 self.tui.set_status("Running")
             else:
